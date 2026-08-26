@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Nastavení · {{ app_name }}{% endblock %}
+{% block content %}
+  <p><a href="/">← Přehled</a></p>
+  <h1>Nastavení</h1>
+  {% if notice == "saved" %}<p class="notice">Uloženo.</p>{% endif %}
+  {% if notice == "livelox-ok" %}<p class="notice">Livelox je propojený.</p>{% endif %}
+  {% if notice == "livelox-missing" %}<p class="error">Provozovatel ještě nenastavil LIVELOX_CLIENT_ID.</p>{% endif %}
+  {% if notice == "livelox-denied" or notice == "livelox-state" %}<p class="error">Propojení Liveloxu se nepodařilo. Zkuste to znovu.</p>{% endif %}
+
+  <form method="post" action="/settings" class="card">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>
+      <input type="checkbox" name="sync_enabled" value="1" {% if prefs.sync_enabled %}checked{% endif %}>
+      Zapnout synchronizaci
+    </label>
+    <label>
+      <input type="checkbox" name="require_gps" value="1" {% if prefs.require_gps %}checked{% endif %}>
+      Jen aktivity s GPS
+    </label>
+    <label for="min_duration_seconds">Minimální délka (sekundy, 0 = bez limitu)</label>
+    <input id="min_duration_seconds" name="min_duration_seconds" type="number" min="0" value="{{ prefs.min_duration_seconds }}">
+
+    <p>Sporty z Intervals.icu</p>
+    <div class="sports">
+      {% for sport in sports %}
+      <label>
+        <input type="checkbox" name="sports" value="{{ sport }}" {% if sport in selected %}checked{% endif %}>
+        {{ sport }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <label for="intervals_api_key">Intervals.icu API klíč {% if intervals_ok %}(uložený, vyplňte jen při obnovení){% endif %}</label>
+    <input id="intervals_api_key" name="intervals_api_key" type="password" autocomplete="off" placeholder="Settings → Developer Settings">
+    <button type="submit">Uložit</button>
+  </form>
+
+  <div class="card">
+    <p>Livelox: {% if livelox_ok %}propojeno{% else %}zatím ne{% endif %}</p>
+    {% if livelox_ready %}
+      <a class="button" href="/oauth/livelox">Propojit / obnovit Livelox</a>
+    {% else %}
+      <p class="lead">OAuth Liveloxu se zapne, až bude v konfiguraci serveru LIVELOX_CLIENT_ID.</p>
+    {% endif %}
+  </div>
+{% endblock %}

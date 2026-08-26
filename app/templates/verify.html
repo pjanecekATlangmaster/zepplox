@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Kód · {{ app_name }}{% endblock %}
+{% block content %}
+  <h1>Zadejte kód</h1>
+  <p class="lead">Kód platí několik minut a lze ho použít jen jednou.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login/verify" class="card">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="code">Šestimístný kód</label>
+    <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code">
+    <button type="submit">Přihlásit</button>
+  </form>
+{% endblock %}

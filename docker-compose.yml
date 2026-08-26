@@ -1,0 +1,14 @@
+# Secrets live in .env next to this file on the server, not in git.
+services:
+  zepplox:
+    build: .
+    image: zepplox:local
+    container_name: zepplox
+    ports:
+      - "8456:8456"
+    env_file:
+      - .env
+    dns:
+      - "8.8.8.8"
+      - "1.1.1.1"
+    restart: unless-stopped

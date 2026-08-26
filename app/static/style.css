@@ -1,0 +1,78 @@
+:root {
+  --bg: #f4f1ea;
+  --ink: #1c241c;
+  --muted: #5c6758;
+  --line: #d5d0c4;
+  --accent: #2f5d3a;
+  --card: #fffdf8;
+  --danger: #8b2e2e;
+  --ok: #2f5d3a;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--accent); }
+header, main, footer { width: min(920px, calc(100% - 32px)); margin: 0 auto; }
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 28px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+header strong { font-size: 1.15rem; letter-spacing: 0.02em; }
+header span { color: var(--muted); font-size: 0.9rem; }
+main { padding: 28px 0 64px; }
+h1 { font-size: 1.6rem; font-weight: 650; margin: 0 0 8px; }
+p.lead { color: var(--muted); margin: 0 0 24px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.pill {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+.pill.ok { border-color: var(--ok); color: var(--ok); }
+.pill.off { color: var(--muted); }
+label { display: block; margin: 12px 0 6px; font-size: 0.9rem; }
+input[type="email"], input[type="text"], input[type="password"], input[type="number"] {
+  width: 100%;
+  max-width: 28rem;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font: inherit;
+}
+button, .button {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 10px 16px;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+button.ghost, .button.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.error { color: var(--danger); margin: 12px 0; }
+.notice { color: var(--ok); margin: 0 0 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+.sports { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 16px; }
+.sports label { margin: 0; }
+nav form { display: inline; }
+footer { color: var(--muted); font-size: 0.8rem; padding-bottom: 32px; }

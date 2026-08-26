@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Nastavení · {{ app_name }}{% endblock %}
+{% block title %}{{ t.settings }} · {{ app_name }}{% endblock %}
 {% block content %}
-  <p><a href="/">← Přehled</a></p>
-  <h1>Nastavení</h1>
+  <p><a href="/">{{ t.back_overview }}</a></p>
+  <h1>{{ t.settings }}</h1>
   <div class="card">
-    <p>Účet: <strong>{{ user.email }}</strong></p>
-    <p class="lead">Napojení na Intervals.icu a Livelox zatím není zapnuté. Až ověříme, že přihlášení a Docker běží, doplníme API klíč, OAuth a synchronizaci.</p>
+    <p>{{ t.account_label }}: <strong>{{ user.email }}</strong></p>
+    <p class="lead">{{ t.settings_pending }}</p>
   </div>
 {% endblock %}

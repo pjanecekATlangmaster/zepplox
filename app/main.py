@@ -24,6 +24,8 @@ from app.accounts import (
 )
 from app.config import get_settings
 from app.db import get_db, init_db
+from app.i18n import COOKIE as LANG_COOKIE
+from app.i18n import LANGS, resolve_lang, strings_for
 from app.mail import send_otp_email
 from app.models import User
 
@@ -63,7 +65,7 @@ def _csrf(request: Request) -> str:
 
 def _check_csrf(request: Request, csrf: str) -> None:
     if not csrf or csrf != request.session.get("csrf"):
-        raise HTTPException(status_code=400, detail="Neplatný formulář, zkuste to znovu.")
+        raise HTTPException(status_code=400, detail=strings_for(resolve_lang(request))["error_csrf"])
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
@@ -91,12 +93,36 @@ def request_ip(request: Request) -> str:
 
 
 def _ctx(request: Request, **extra):
+    lang = extra.pop("lang", None) or resolve_lang(request)
     return {
         "request": request,
         "app_name": settings.app_name,
         "csrf": _csrf(request),
+        "lang": lang,
+        "t": strings_for(lang),
         **extra,
     }
+
+
+def _html(request: Request, template: str, status_code: int = 200, **extra) -> HTMLResponse:
+    lang = resolve_lang(request)
+    response = templates.TemplateResponse(
+        request,
+        template,
+        _ctx(request, lang=lang, **extra),
+        status_code=status_code,
+    )
+    query_lang = (request.query_params.get("lang") or "").lower()
+    if query_lang in LANGS:
+        response.set_cookie(
+            LANG_COOKIE,
+            query_lang,
+            max_age=365 * 24 * 3600,
+            samesite="lax",
+            secure=settings.app_base_url.startswith("https://"),
+            path="/",
+        )
+    return response
 
 
 @app.get("/healthz")
@@ -111,19 +137,15 @@ def home(
     user: User | None = Depends(current_user),
 ):
     if user is None:
-        return templates.TemplateResponse(request, "landing.html", _ctx(request))
-    return templates.TemplateResponse(
-        request,
-        "home.html",
-        _ctx(request, user=user),
-    )
+        return _html(request, "landing.html")
+    return _html(request, "home.html", user=user)
 
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, user: User | None = Depends(current_user)):
     if user is not None:
         return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(request, "login.html", _ctx(request, error=None))
+    return _html(request, "login.html", error=None)
 
 
 @app.post("/login")
@@ -134,41 +156,22 @@ def login_start(
     db: Session = Depends(get_db),
 ):
     _check_csrf(request, csrf)
+    t = strings_for(resolve_lang(request))
     normalized = normalize_email(email)
     if not normalized:
-        return templates.TemplateResponse(
-            request,
-            "login.html",
-            _ctx(request, error="Zadejte platnou e-mailovou adresu."),
-            status_code=400,
-        )
+        return _html(request, "login.html", status_code=400, error=t["error_email"])
     window = timedelta(seconds=settings.otp_window_seconds)
     ip = request_ip(request)
     if recent_otp_count(db, email=normalized, window=window) >= settings.otp_max_per_window:
-        return templates.TemplateResponse(
-            request,
-            "login.html",
-            _ctx(request, error="Příliš mnoho pokusů na tento e-mail. Zkuste to za chvíli."),
-            status_code=429,
-        )
+        return _html(request, "login.html", status_code=429, error=t["error_otp_email"])
     if ip and recent_otp_count(db, ip=ip, window=window) >= settings.otp_max_per_ip:
-        return templates.TemplateResponse(
-            request,
-            "login.html",
-            _ctx(request, error="Příliš mnoho pokusů z této sítě. Zkuste to za chvíli."),
-            status_code=429,
-        )
+        return _html(request, "login.html", status_code=429, error=t["error_otp_ip"])
     code = create_otp(db, settings, normalized, client_ip=ip)
     try:
         send_otp_email(settings, normalized, code)
     except Exception:
         log.exception("Failed to send OTP to %s", normalized)
-        return templates.TemplateResponse(
-            request,
-            "login.html",
-            _ctx(request, error="E-mail s kódem se nepodařilo odeslat. Zkuste to znovu, nebo zkontrolujte SMTP."),
-            status_code=502,
-        )
+        return _html(request, "login.html", status_code=502, error=t["error_smtp"])
     request.session["otp_email"] = normalized
     return RedirectResponse("/login/verify", status_code=303)
 
@@ -177,7 +180,7 @@ def login_start(
 def verify_form(request: Request):
     if not request.session.get("otp_email"):
         return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "verify.html", _ctx(request, error=None))
+    return _html(request, "verify.html", error=None)
 
 
 @app.post("/login/verify")
@@ -192,11 +195,11 @@ def verify_post(
     if not email:
         return RedirectResponse("/login", status_code=303)
     if not consume_otp(db, email, code):
-        return templates.TemplateResponse(
+        return _html(
             request,
             "verify.html",
-            _ctx(request, error="Neplatný nebo prošlý kód."),
             status_code=400,
+            error=strings_for(resolve_lang(request))["error_otp"],
         )
     user = get_or_create_user(db, email)
     user.last_login_at = utcnow()
@@ -218,12 +221,12 @@ def settings_page(
     request: Request,
     user: User = Depends(require_user),
 ):
-    return templates.TemplateResponse(request, "settings.html", _ctx(request, user=user))
+    return _html(request, "settings.html", user=user)
 
 
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy(request: Request):
-    return templates.TemplateResponse(request, "privacy.html", _ctx(request))
+    return _html(request, "privacy.html")
 
 
 @app.exception_handler(HTTPException)

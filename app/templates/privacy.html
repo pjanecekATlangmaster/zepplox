@@ -1,6 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Privacy · {{ app_name }}{% endblock %}
+{% block title %}{{ t.privacy_title }} · {{ app_name }}{% endblock %}
 {% block content %}
+{% if lang == "en" %}
   <h1>Privacy policy</h1>
   <p class="lead">This instance of {{ app_name }} is a self-hosted bridge. It is not affiliated with Zepp Health, Amazfit, Intervals.icu, or Livelox.</p>
 
@@ -22,5 +23,29 @@
     <p>You can disconnect Intervals.icu and Livelox in Settings. Disconnecting Livelox revokes the refresh token when possible. Ask the operator of this deployment to delete your account and encrypted secrets if you want them removed from the database.</p>
     <p>Tokens at rest are encrypted with a host key that is not stored in git. Without that key, a database dump is not usable as login credentials.</p>
   </div>
-  <p><a href="/">← Home</a></p>
+  <p><a href="/?lang=en">{{ t.back_home }}</a></p>
+{% else %}
+  <h1>Zásady soukromí</h1>
+  <p class="lead">Tato instance {{ app_name }} je samostatně provozovaný most. Nesouvisí se Zepp Health, Amazfit, Intervals.icu ani Liveloxem.</p>
+
+  <div class="card">
+    <h2>Co se ukládá</h2>
+    <ul>
+      <li>E-mailová adresa (jen kvůli jednorázovému přihlašovacímu kódu a identifikaci účtu).</li>
+      <li>Šifrovaný API klíč Intervals.icu a OAuth tokeny Liveloxu.</li>
+      <li>Nastavení synchronizace (sporty, filtr délky, zap/vyp).</li>
+      <li>Sedmidenní protokol importů (název aktivity, sport, stav). GPS soubory se <strong>neukládají</strong>: stáhnou se, odešlou do Liveloxu a zahodí.</li>
+    </ul>
+    <h2>Kam data odcházejí</h2>
+    <ul>
+      <li>Intervals.icu se ptáme klíčem, který jste vložili, na seznam a stažení vašich vlastních aktivit.</li>
+      <li>Odpovídající soubory se nahrají do Liveloxu tokenem, který jste udělili (oprávnění <code>routes.import</code>).</li>
+      <li>Přihlašovací kódy posílá e-mailem provozovatel této instance.</li>
+    </ul>
+    <h2>Přístup a smazání</h2>
+    <p>Intervals.icu a Livelox lze odpojit v nastavení. Odpojení Liveloxu ve vhodných případech zneplatní i obnovovací token. Smazání účtu a šifrovaných tajemství z databáze řeší provozovatel této instance.</p>
+    <p>Tokeny v klidu jsou šifrované klíčem na serveru, který není v gitu. Bez něj výpis databáze nestačí jako přihlašovací údaje.</p>
+  </div>
+  <p><a href="/">{{ t.back_home }}</a></p>
+{% endif %}
 {% endblock %}

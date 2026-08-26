@@ -19,20 +19,56 @@ header, main, footer { width: min(920px, calc(100% - 32px)); margin: 0 auto; }
 header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
+  gap: 16px;
   padding: 28px 0 16px;
   border-bottom: 1px solid var(--line);
 }
+a.brand { color: inherit; text-decoration: none; }
 header strong { font-size: 1.15rem; letter-spacing: 0.02em; }
-header span { color: var(--muted); font-size: 0.9rem; }
+.header-right {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.header-right > span { color: var(--muted); font-size: 0.9rem; }
+.lang { display: flex; gap: 10px; font-size: 0.85rem; }
+.lang a { color: var(--muted); text-decoration: none; }
+.lang a[aria-current="true"] { color: var(--ink); font-weight: 650; }
 main { padding: 28px 0 64px; }
 h1 { font-size: 1.6rem; font-weight: 650; margin: 0 0 8px; }
+h2 { font-size: 1.08rem; font-weight: 650; margin: 0 0 10px; }
+.card h2:not(:first-child) { margin-top: 22px; }
 p.lead { color: var(--muted); margin: 0 0 24px; }
+.path {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.88rem;
+  background: #efebe3;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  margin: 0 0 24px;
+  overflow-x: auto;
+}
 .card {
   background: var(--card);
   border: 1px solid var(--line);
   padding: 20px;
   margin-bottom: 16px;
+}
+.card p { margin: 0 0 12px; }
+.card p:last-child { margin-bottom: 0; }
+.card ul, .card ol { margin: 0 0 12px; padding-left: 1.25rem; }
+.card li { margin: 6px 0; }
+.steps { padding-left: 1.2rem; }
+.note { color: var(--muted); font-size: 0.92rem; }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .pill {

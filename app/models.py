@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -30,12 +30,14 @@ class UserSettings(Base):
     sports: Mapped[str] = mapped_column(String(500), default="Run,TrailRun,Walk,Hike")
     min_duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
     require_gps: Mapped[int] = mapped_column(Integer, default=1)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="settings")
 
 
 class Connection(Base):
     __tablename__ = "connections"
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_connection_user_provider"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -56,6 +58,7 @@ class OtpChallenge(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    client_ip: Mapped[str] = mapped_column(String(64), default="", index=True)
 
 
 class ImportLog(Base):

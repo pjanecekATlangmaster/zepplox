@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} · Zepp → Livelox{% endblock %}
+{% block content %}
+  <h1>Synchronizace tras Zepp → Livelox</h1>
+  <p class="lead">{{ app_name }} bude stahovat GPS aktivity z Intervals.icu (kam je Zepp oficiálně posílá) a nahrávat je pod váš účet v Liveloxu.</p>
+  <div class="card">
+    <p>Teď ověřujeme přihlášení. Napojení Intervals.icu a Liveloxu zapneme v dalším kroku.</p>
+    <a class="button" href="/login">Přihlásit / registrovat</a>
+  </div>
+{% endblock %}

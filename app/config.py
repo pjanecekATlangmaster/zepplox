@@ -4,8 +4,19 @@ from functools import lru_cache
 from typing import Self
 from urllib.parse import quote_plus
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENCRYPTION_ALIASES = {
+    "starttls": "starttls",
+    "tls": "starttls",
+    "ssl": "ssl",
+    "smtps": "ssl",
+    "none": "none",
+    "off": "none",
+    "false": "none",
+    "0": "none",
+}
 
 
 class Settings(BaseSettings):
@@ -28,11 +39,11 @@ class Settings(BaseSettings):
 
     smtp_host: str = ""
     smtp_port: int = 25
-    smtp_starttls: bool = True
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_encryption: str = "starttls"
     smtp_from: str = ""
     smtp_from_name: str = "ZeppLox"
-
-    allowed_emails: str = ""
 
     livelox_client_id: str = ""
     livelox_redirect_uri: str = ""
@@ -42,6 +53,7 @@ class Settings(BaseSettings):
     otp_ttl_seconds: int = 600
     otp_max_per_window: int = 3
     otp_window_seconds: int = 900
+    otp_max_per_ip: int = 10
 
     port: int = Field(default=8456, validation_alias=AliasChoices("PORT", "port"))
 
@@ -50,9 +62,36 @@ class Settings(BaseSettings):
     def strip_slash(cls, value: str) -> str:
         return value.rstrip("/")
 
-    @property
-    def allowed_email_set(self) -> set[str]:
-        return {part.strip().lower() for part in self.allowed_emails.split(",") if part.strip()}
+    @field_validator("db_host", "db_name", "db_user", "db_password", "smtp_host", "smtp_user", "smtp_password", "smtp_from")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("smtp_encryption", mode="before")
+    @classmethod
+    def normalize_smtp_encryption(cls, value: object) -> str:
+        if value is None or value == "":
+            return "starttls"
+        raw = str(value).strip().lower()
+        if raw in {"true", "1", "yes"}:
+            return "starttls"
+        mapped = _ENCRYPTION_ALIASES.get(raw)
+        if mapped is None:
+            raise ValueError("SMTP_ENCRYPTION must be starttls, ssl, or none")
+        return mapped
+
+    @model_validator(mode="before")
+    @classmethod
+    def smtp_starttls_alias(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        encryption = data.get("smtp_encryption") or data.get("SMTP_ENCRYPTION")
+        starttls = data.get("smtp_starttls", data.get("SMTP_STARTTLS"))
+        if (encryption is None or encryption == "") and starttls is not None:
+            flag = str(starttls).strip().lower() in {"1", "true", "yes", "on"}
+            data = dict(data)
+            data["smtp_encryption"] = "starttls" if flag else "none"
+        return data
 
     @property
     def database_url(self) -> str:
@@ -60,6 +99,14 @@ class Settings(BaseSettings):
             f"mysql+pymysql://{quote_plus(self.db_user)}:{quote_plus(self.db_password)}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}?charset=utf8mb4"
         )
+
+    @property
+    def smtp_is_console(self) -> bool:
+        return self.smtp_host.lower() in {"console", "log", "stdout"}
+
+    @property
+    def smtp_uses_auth(self) -> bool:
+        return bool(self.smtp_user)
 
     @property
     def livelox_callback(self) -> str:
@@ -77,8 +124,8 @@ class Settings(BaseSettings):
                 ("SESSION_SECRET", bool(self.session_secret)),
                 ("DB_PASSWORD", bool(self.db_password)),
                 ("SMTP_HOST", bool(self.smtp_host)),
-                ("SMTP_FROM", bool(self.smtp_from)),
-                ("ALLOWED_EMAILS", bool(self.allowed_email_set)),
+                ("SMTP_FROM", bool(self.smtp_from) or self.smtp_is_console),
+                ("SMTP_PASSWORD", bool(self.smtp_password) or not self.smtp_uses_auth),
             )
             if not ok
         ]

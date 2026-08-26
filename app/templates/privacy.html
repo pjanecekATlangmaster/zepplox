@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Privacy · {{ app_name }}{% endblock %}
+{% block content %}
+  <h1>Privacy policy</h1>
+  <p class="lead">This instance of {{ app_name }} is a self-hosted bridge. It is not affiliated with Zepp Health, Amazfit, Intervals.icu, or Livelox.</p>
+
+  <div class="card">
+    <h2>What is stored</h2>
+    <ul>
+      <li>Your e-mail address (used only to send a one-time login code and to identify your account).</li>
+      <li>Encrypted Intervals.icu API key and Livelox OAuth tokens.</li>
+      <li>Sync settings (sports, duration filter, on/off).</li>
+      <li>A seven-day import log (activity title, sport, status). GPS files are <strong>not</strong> kept: they are downloaded, posted to Livelox, and discarded.</li>
+    </ul>
+    <h2>What is sent where</h2>
+    <ul>
+      <li>Intervals.icu is queried with the key you provided, to list and download your own activities.</li>
+      <li>Matching activity files are uploaded to Livelox with the OAuth token you granted (scope <code>routes.import</code>).</li>
+      <li>Login codes are sent by e-mail from the operator of this instance.</li>
+    </ul>
+    <h2>Access and deletion</h2>
+    <p>You can disconnect Intervals.icu and Livelox in Settings. Disconnecting Livelox revokes the refresh token when possible. Ask the operator of this deployment to delete your account and encrypted secrets if you want them removed from the database.</p>
+    <p>Tokens at rest are encrypted with a host key that is not stored in git. Without that key, a database dump is not usable as login credentials.</p>
+  </div>
+  <p><a href="/">← Home</a></p>
+{% endblock %}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -9,26 +10,24 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.accounts import (
-    connection_for,
     consume_otp,
     create_otp,
-    email_allowed,
     get_or_create_user,
+    normalize_email,
     recent_otp_count,
-    upsert_connection,
     utcnow,
 )
 from app.config import get_settings
 from app.db import get_db, init_db
-from app.livelox import authorize_url, dump_tokens, exchange_code, new_pkce
 from app.mail import send_otp_email
-from app.models import ImportLog, SyncRun, User, UserSettings
-from app.sync import SPORT_CHOICES
+from app.models import User
+
+log = logging.getLogger("zepplox")
 
 ROOT = Path(__file__).resolve().parent
 settings = get_settings()
@@ -37,6 +36,7 @@ templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     get_settings().require_runtime_secrets()
     init_db()
     yield
@@ -81,6 +81,15 @@ def require_user(user: User | None = Depends(current_user)) -> User:
     return user
 
 
+def request_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()[:64]
+    if request.client and request.client.host:
+        return request.client.host[:64]
+    return ""
+
+
 def _ctx(request: Request, **extra):
     return {
         "request": request,
@@ -91,41 +100,22 @@ def _ctx(request: Request, **extra):
 
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
+def healthz(db: Session = Depends(get_db)) -> dict[str, str]:
+    db.execute(text("SELECT 1"))
     return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse)
 def home(
     request: Request,
-    db: Session = Depends(get_db),
     user: User | None = Depends(current_user),
 ):
     if user is None:
-        return RedirectResponse("/login", status_code=303)
-    last_run = db.scalars(select(SyncRun).order_by(SyncRun.id.desc())).first()
-    logs = list(
-        db.scalars(
-            select(ImportLog)
-            .where(ImportLog.user_id == user.id)
-            .order_by(ImportLog.id.desc())
-            .limit(50)
-        ).all()
-    )
-    intervals = connection_for(db, user.id, "intervals")
-    livelox = connection_for(db, user.id, "livelox")
+        return templates.TemplateResponse(request, "landing.html", _ctx(request))
     return templates.TemplateResponse(
         request,
         "home.html",
-        _ctx(
-            request,
-            user=user,
-            last_run=last_run,
-            logs=logs,
-            intervals_ok=intervals is not None,
-            livelox_ok=livelox is not None,
-            sync_on=bool(user.settings and user.settings.sync_enabled),
-        ),
+        _ctx(request, user=user),
     )
 
 
@@ -144,24 +134,41 @@ def login_start(
     db: Session = Depends(get_db),
 ):
     _check_csrf(request, csrf)
-    normalized = email.strip().lower()
-    if not email_allowed(settings, normalized):
+    normalized = normalize_email(email)
+    if not normalized:
         return templates.TemplateResponse(
             request,
             "login.html",
-            _ctx(request, error="Tento e-mail není na seznamu povolených adres."),
-            status_code=403,
+            _ctx(request, error="Zadejte platnou e-mailovou adresu."),
+            status_code=400,
         )
     window = timedelta(seconds=settings.otp_window_seconds)
-    if recent_otp_count(db, normalized, window) >= settings.otp_max_per_window:
+    ip = request_ip(request)
+    if recent_otp_count(db, email=normalized, window=window) >= settings.otp_max_per_window:
         return templates.TemplateResponse(
             request,
             "login.html",
-            _ctx(request, error="Příliš mnoho pokusů. Zkuste to za chvíli."),
+            _ctx(request, error="Příliš mnoho pokusů na tento e-mail. Zkuste to za chvíli."),
             status_code=429,
         )
-    code = create_otp(db, settings, normalized)
-    send_otp_email(settings, normalized, code)
+    if ip and recent_otp_count(db, ip=ip, window=window) >= settings.otp_max_per_ip:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            _ctx(request, error="Příliš mnoho pokusů z této sítě. Zkuste to za chvíli."),
+            status_code=429,
+        )
+    code = create_otp(db, settings, normalized, client_ip=ip)
+    try:
+        send_otp_email(settings, normalized, code)
+    except Exception:
+        log.exception("Failed to send OTP to %s", normalized)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            _ctx(request, error="E-mail s kódem se nepodařilo odeslat. Zkuste to znovu, nebo zkontrolujte SMTP."),
+            status_code=502,
+        )
     request.session["otp_email"] = normalized
     return RedirectResponse("/login/verify", status_code=303)
 
@@ -209,85 +216,14 @@ def logout(request: Request, csrf: str = Form(...)):
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
-    db: Session = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    prefs = user.settings or UserSettings(user_id=user.id)
-    selected = {part.strip() for part in prefs.sports.split(",") if part.strip()}
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        _ctx(
-            request,
-            user=user,
-            prefs=prefs,
-            sports=SPORT_CHOICES,
-            selected=selected,
-            intervals_ok=connection_for(db, user.id, "intervals") is not None,
-            livelox_ok=connection_for(db, user.id, "livelox") is not None,
-            livelox_ready=settings.livelox_configured,
-            notice=request.query_params.get("notice"),
-        ),
-    )
+    return templates.TemplateResponse(request, "settings.html", _ctx(request, user=user))
 
 
-@app.post("/settings")
-def settings_save(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_user),
-    csrf: str = Form(...),
-    sync_enabled: str | None = Form(None),
-    require_gps: str | None = Form(None),
-    min_duration_seconds: int = Form(0),
-    sports: list[str] = Form(default=[]),
-    intervals_api_key: str = Form(""),
-):
-    _check_csrf(request, csrf)
-    prefs = user.settings
-    if prefs is None:
-        prefs = UserSettings(user_id=user.id)
-        db.add(prefs)
-    prefs.sync_enabled = 1 if sync_enabled else 0
-    prefs.require_gps = 1 if require_gps else 0
-    prefs.min_duration_seconds = max(0, min_duration_seconds)
-    chosen = [sport for sport in SPORT_CHOICES if sport in sports]
-    prefs.sports = ",".join(chosen) if chosen else "Run"
-    key = intervals_api_key.strip()
-    if key:
-        upsert_connection(db, user.id, "intervals", key)
-    return RedirectResponse("/settings?notice=saved", status_code=303)
-
-
-@app.get("/oauth/livelox")
-def livelox_start(request: Request, user: User = Depends(require_user)):
-    if not settings.livelox_configured:
-        return RedirectResponse("/settings?notice=livelox-missing", status_code=303)
-    verifier, challenge = new_pkce()
-    state = secrets.token_urlsafe(24)
-    request.session["livelox_verifier"] = verifier
-    request.session["livelox_state"] = state
-    return RedirectResponse(authorize_url(settings, state, challenge), status_code=303)
-
-
-@app.get("/oauth/livelox/callback")
-def livelox_callback(
-    request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_user),
-    code: str | None = None,
-    state: str | None = None,
-    error: str | None = None,
-):
-    if error:
-        return RedirectResponse("/settings?notice=livelox-denied", status_code=303)
-    if not code or state != request.session.get("livelox_state"):
-        return RedirectResponse("/settings?notice=livelox-state", status_code=303)
-    verifier = request.session.pop("livelox_verifier", "")
-    request.session.pop("livelox_state", None)
-    tokens = exchange_code(settings, code, verifier)
-    upsert_connection(db, user.id, "livelox", dump_tokens(tokens))
-    return RedirectResponse("/settings?notice=livelox-ok", status_code=303)
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy(request: Request):
+    return templates.TemplateResponse(request, "privacy.html", _ctx(request))
 
 
 @app.exception_handler(HTTPException)

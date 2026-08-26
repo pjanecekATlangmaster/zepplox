@@ -14,39 +14,7 @@
     </nav>
   </div>
 
-  <div class="row">
-    <span class="pill {% if intervals_ok %}ok{% else %}off{% endif %}">Intervals.icu {% if intervals_ok %}propojeno{% else %}chybí{% endif %}</span>
-    <span class="pill {% if livelox_ok %}ok{% else %}off{% endif %}">Livelox {% if livelox_ok %}propojeno{% else %}chybí{% endif %}</span>
-    <span class="pill {% if sync_on %}ok{% else %}off{% endif %}">Synchronizace {% if sync_on %}zapnutá{% else %}vypnutá{% endif %}</span>
-  </div>
-
   <div class="card">
-    {% if last_run and last_run.finished_at %}
-      <p>Poslední běh: {{ last_run.finished_at }} — import {{ last_run.imported_count }}, přeskočeno {{ last_run.skipped_count }}, chyb {{ last_run.error_count }}.</p>
-    {% else %}
-      <p>Cron ještě neběžel. Na NAS naplánujte <code>docker exec zepplox python -m app.sync</code> každých 30 minut.</p>
-    {% endif %}
+    <p>Přihlášení funguje. Propojení Intervals.icu → Livelox přijde v dalším kroku.</p>
   </div>
-
-  <h2>Log (7 dní)</h2>
-  {% if logs %}
-  <table>
-    <thead>
-      <tr><th>Čas</th><th>Aktivita</th><th>Sport</th><th>Stav</th><th>Poznámka</th></tr>
-    </thead>
-    <tbody>
-      {% for row in logs %}
-      <tr>
-        <td>{{ row.created_at }}</td>
-        <td>{{ row.title or row.intervals_activity_id }}</td>
-        <td>{{ row.sport }}</td>
-        <td>{{ row.status }}</td>
-        <td>{{ row.message }}{% if row.livelox_event %} · {{ row.livelox_event }}{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="lead">Zatím žádné záznamy. Prázdný běh cronu sem zapíše až po první kontrole aktivit.</p>
-  {% endif %}
 {% endblock %}

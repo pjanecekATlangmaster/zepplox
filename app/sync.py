@@ -6,7 +6,7 @@ import time
 from datetime import timedelta
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.accounts import connection_for, livelox_tokens, read_connection_secret, upsert_connection, utcnow
 from app.config import Settings, get_settings
@@ -92,12 +92,14 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
     intervals = connection_for(db, user.id, "intervals")
     if intervals is None:
         _log_row(db, user.id, status="error", message="Intervals.icu není propojené")
+        prefs.last_sync_at = utcnow()
         return 0, 0, 1
 
     try:
         api_key = read_connection_secret(intervals)
     except ValueError as exc:
         _log_row(db, user.id, status="error", message=str(exc))
+        prefs.last_sync_at = utcnow()
         return 0, 0, 1
 
     newest = utcnow().date()
@@ -106,6 +108,7 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
         activities = list_activities(api_key, oldest, newest)
     except Exception as exc:
         _log_row(db, user.id, status="error", message=f"Intervals.icu: {exc}")
+        prefs.last_sync_at = utcnow()
         return 0, 0, 1
 
     allowed = _sports(prefs)
@@ -168,21 +171,25 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
             posted = import_route(access, f"zepplox-{activity_id}"[:48], fit)
             route_id = str(posted.get("id") or f"zepplox-{activity_id}")
             event_name = ""
+            final_status = "pending"
             for _ in range(8):
                 time.sleep(2)
                 meta = import_status(access, route_id)
-                status = meta.get("status")
-                if status == "imported":
+                final_status = str(meta.get("status") or "pending")
+                if final_status == "imported":
                     event_name = " / ".join(
-                        part for part in (meta.get("eventName"), meta.get("className")) if part
+                        part
+                        for part in (meta.get("eventName"), meta.get("className"), meta.get("viewerUrl"))
+                        if part
                     )
                     break
-                if status == "error":
+                if final_status == "error":
                     raise RuntimeError(meta.get("errorMessage") or "Livelox import error")
             imported += 1
+            message = "Importováno" if final_status == "imported" else "Odesláno, Livelox ještě zpracovává"
             _log_row(
                 db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="imported", message="Importováno", event=event_name,
+                status="imported", message=message, event=event_name,
             )
         except Exception as exc:
             errors += 1
@@ -191,6 +198,7 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
                 status="error", message=str(exc),
             )
 
+    prefs.last_sync_at = utcnow()
     return imported, skipped, errors
 
 
@@ -203,11 +211,10 @@ def run_sync() -> None:
         db.add(run)
         db.flush()
         purge_old_logs(db, settings)
-        users = list(db.scalars(select(User)).all())
+        users = list(db.scalars(select(User).options(selectinload(User.settings))).all())
         imported = skipped = errors = 0
         processed = 0
         for user in users:
-            db.refresh(user)
             if user.settings is None:
                 continue
             processed += 1

@@ -29,9 +29,9 @@ def list_activities(api_key: str, oldest: date, newest: date) -> list[dict]:
 
 def download_fit(api_key: str, activity_id: str) -> bytes:
     with _client(api_key) as client:
-        response = client.get(f"/activity/{activity_id}/fit-file")
+        response = client.get(f"/activity/{activity_id}/file")
         if response.status_code == 404:
-            response = client.get(f"/activity/{activity_id}/file")
+            response = client.get(f"/activity/{activity_id}/fit-file")
         response.raise_for_status()
         return response.content
 

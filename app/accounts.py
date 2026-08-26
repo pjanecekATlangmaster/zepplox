@@ -23,20 +23,27 @@ def hash_otp(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
 
-def email_allowed(settings: Settings, email: str) -> bool:
-    return email.strip().lower() in settings.allowed_email_set
+def normalize_email(email: str) -> str | None:
+    value = email.strip().lower()
+    if "@" not in value or value.startswith("@") or value.endswith("@"):
+        return None
+    local, _, domain = value.partition("@")
+    if not local or "." not in domain:
+        return None
+    return value
 
 
-def recent_otp_count(db: Session, email: str, window: timedelta) -> int:
+def recent_otp_count(db: Session, *, email: str | None = None, ip: str | None = None, window: timedelta) -> int:
     since = utcnow() - window
-    stmt = select(func.count(OtpChallenge.id)).where(
-        OtpChallenge.email == email.lower(),
-        OtpChallenge.created_at >= since,
-    )
+    stmt = select(func.count(OtpChallenge.id)).where(OtpChallenge.created_at >= since)
+    if email:
+        stmt = stmt.where(OtpChallenge.email == email.lower())
+    if ip:
+        stmt = stmt.where(OtpChallenge.client_ip == ip)
     return int(db.scalar(stmt) or 0)
 
 
-def create_otp(db: Session, settings: Settings, email: str) -> str:
+def create_otp(db: Session, settings: Settings, email: str, client_ip: str = "") -> str:
     code = f"{secrets.randbelow(1_000_000):06d}"
     now = utcnow()
     db.add(
@@ -45,6 +52,7 @@ def create_otp(db: Session, settings: Settings, email: str) -> str:
             code_hash=hash_otp(code),
             created_at=now,
             expires_at=now + timedelta(seconds=settings.otp_ttl_seconds),
+            client_ip=client_ip[:64],
         )
     )
     return code
@@ -102,3 +110,11 @@ def read_connection_secret(row: Connection) -> str:
 
 def livelox_tokens(row: Connection) -> dict:
     return json.loads(read_connection_secret(row))
+
+
+def delete_connection(db: Session, user_id: int, provider: str) -> Connection | None:
+    row = connection_for(db, user_id, provider)
+    if row is None:
+        return None
+    db.delete(row)
+    return row

@@ -13,6 +13,7 @@ from app.config import Settings
 
 AUTHORIZE = "https://api.livelox.com/oauth2/authorize"
 TOKEN = "https://api.livelox.com/oauth2/token"
+REVOKE = "https://api.livelox.com/oauth2/revoke"
 IMPORT_ROUTES = "https://api.livelox.com/importableRoutes"
 SCOPE = "routes.import"
 
@@ -113,6 +114,19 @@ def import_status(access_token: str, route_id: str) -> dict:
     )
     response.raise_for_status()
     return response.json()
+
+
+def revoke_token(settings: Settings, token: str) -> None:
+    if not token:
+        return
+    try:
+        httpx.post(
+            REVOKE,
+            data={"token": token, "client_id": settings.livelox_client_id},
+            timeout=15.0,
+        )
+    except httpx.HTTPError:
+        return
 
 
 def dump_tokens(payload: dict) -> str:

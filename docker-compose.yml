@@ -1,9 +1,11 @@
-# Secrets live in .env next to this file on the server, not in git.
+# Secrets live in .env next to this file on the NAS, not in git.
+# Image is built by GitHub Actions and pulled here — do not Build in Container Manager.
+
 services:
   zepplox:
-    build: .
-    image: zepplox:local
+    image: ghcr.io/pjanecekatlangmaster/zepplox:latest
     container_name: zepplox
+    network_mode: bridge
     ports:
       - "8456:8456"
     env_file:

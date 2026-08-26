@@ -5,12 +5,12 @@ import json
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.crypto import decrypt_str, encrypt_str
-from app.models import Connection, OtpChallenge, User, UserSettings
+from app.models import Connection, ImportLog, OtpChallenge, User, UserSettings
 
 DEFAULT_SPORTS = "Run,TrailRun,Walk,Hike"
 
@@ -84,8 +84,26 @@ def get_or_create_user(db: Session, email: str) -> User:
         user = User(email=normalized)
         db.add(user)
         db.flush()
-        db.add(UserSettings(user_id=user.id, sports=DEFAULT_SPORTS))
+        db.add(UserSettings(user_id=user.id, sports=DEFAULT_SPORTS, sync_enabled=1))
     return user
+
+
+def ensure_user_settings(db: Session, user: User) -> UserSettings:
+    if user.settings is None:
+        user.settings = UserSettings(user_id=user.id, sports=DEFAULT_SPORTS, sync_enabled=1)
+        db.add(user.settings)
+        db.flush()
+    return user.settings
+
+
+def delete_user_account(db: Session, user: User) -> None:
+    email = user.email
+    user_id = user.id
+    db.execute(delete(ImportLog).where(ImportLog.user_id == user_id))
+    db.execute(delete(Connection).where(Connection.user_id == user_id))
+    db.execute(delete(UserSettings).where(UserSettings.user_id == user_id))
+    db.execute(delete(OtpChallenge).where(OtpChallenge.email == email))
+    db.delete(user)
 
 
 def connection_for(db: Session, user_id: int, provider: str) -> Connection | None:

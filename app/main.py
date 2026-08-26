@@ -17,6 +17,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.accounts import (
     consume_otp,
     create_otp,
+    delete_user_account,
+    ensure_user_settings,
     get_or_create_user,
     normalize_email,
     recent_otp_count,
@@ -32,6 +34,7 @@ from app.models import User
 log = logging.getLogger("zepplox")
 
 ROOT = Path(__file__).resolve().parent
+GITHUB_URL = "https://github.com/pjanecekATlangmaster/zepplox"
 settings = get_settings()
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
@@ -97,6 +100,7 @@ def _ctx(request: Request, **extra):
     return {
         "request": request,
         "app_name": settings.app_name,
+        "github_url": GITHUB_URL,
         "csrf": _csrf(request),
         "lang": lang,
         "t": strings_for(lang),
@@ -221,7 +225,54 @@ def settings_page(
     request: Request,
     user: User = Depends(require_user),
 ):
-    return _html(request, "settings.html", user=user)
+    return _html(
+        request,
+        "settings.html",
+        user=user,
+        sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+        notice=request.query_params.get("notice"),
+        error=None,
+    )
+
+
+@app.post("/settings/sync")
+def settings_sync(
+    request: Request,
+    csrf: str = Form(...),
+    enabled: str = Form(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    row = ensure_user_settings(db, user)
+    row.sync_enabled = 1 if enabled == "1" else 0
+    notice = "sync_on" if row.sync_enabled else "sync_off"
+    return RedirectResponse(f"/settings?notice={notice}", status_code=303)
+
+
+@app.post("/settings/delete")
+def settings_delete(
+    request: Request,
+    csrf: str = Form(...),
+    confirm: str = Form(""),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    t = strings_for(resolve_lang(request))
+    if confirm != "delete":
+        return _html(
+            request,
+            "settings.html",
+            status_code=400,
+            user=user,
+            sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+            notice=None,
+            error=t["delete_need_confirm"],
+        )
+    delete_user_account(db, user)
+    request.session.clear()
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/privacy", response_class=HTMLResponse)

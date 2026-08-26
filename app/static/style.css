@@ -34,6 +34,8 @@ header strong { font-size: 1.15rem; letter-spacing: 0.02em; }
   justify-content: flex-end;
 }
 .header-right > span { color: var(--muted); font-size: 0.9rem; }
+.header-right a.github { color: var(--muted); text-decoration: none; font-size: 0.85rem; }
+.header-right a.github:hover { color: var(--ink); }
 .lang { display: flex; gap: 10px; font-size: 0.85rem; }
 .lang a { color: var(--muted); text-decoration: none; }
 .lang a[aria-current="true"] { color: var(--ink); font-weight: 650; }
@@ -103,6 +105,19 @@ button.ghost, .button.ghost {
   color: var(--ink);
   border: 1px solid var(--line);
 }
+button.danger {
+  background: var(--danger);
+  color: #fff;
+}
+label.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 0.92rem;
+  max-width: 36rem;
+}
+label.check input { margin-top: 3px; }
 .error { color: var(--danger); margin: 12px 0; }
 .notice { color: var(--ok); margin: 0 0 16px; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }

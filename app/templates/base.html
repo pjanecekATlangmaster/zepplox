@@ -10,7 +10,7 @@
   <header>
     <a class="brand" href="/{% if lang == 'en' %}?lang=en{% endif %}"><strong>{{ app_name }}</strong></a>
     <div class="header-right">
-      <span>{{ t.tagline }}</span>
+      <a class="github" href="{{ github_url }}" rel="noopener" target="_blank">{{ t.github }}</a>
       <nav class="lang" aria-label="{{ t.lang_label }}">
         <a href="{{ request.url.path }}?lang=cs"{% if lang == "cs" %} aria-current="true"{% endif %}>{{ t.lang_cs }}</a>
         <a href="{{ request.url.path }}?lang=en"{% if lang == "en" %} aria-current="true"{% endif %}>{{ t.lang_en }}</a>
@@ -23,6 +23,7 @@
   <footer>
     {{ t.footer }}
     · <a href="/privacy{% if lang == 'en' %}?lang=en{% endif %}">{{ t.privacy_link }}</a>
+    · <a href="{{ github_url }}" rel="noopener" target="_blank">{{ t.github }}</a>
   </footer>
 </body>
 </html>

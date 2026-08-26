@@ -2,46 +2,46 @@
 {% block title %}{{ app_name }} · Zepp → Livelox{% endblock %}
 {% block content %}
 {% if lang == "en" %}
-  <h1>Syncing Amazfit tracks into Livelox</h1>
-  <p class="lead">{{ app_name }} is a self-hosted bridge for orienteers who run with Amazfit watches. It takes the GPS track that Zepp already sends to Intervals.icu and imports it into your Livelox account.</p>
+  <h1>Getting Amazfit tracks into Livelox</h1>
+  <p class="lead">{{ app_name }} copies GPS tracks from Amazfit watches into your Livelox account. Zepp already sends workouts to Intervals.icu; from there {{ app_name }} uploads the matching routes to Livelox on a schedule.</p>
   <p class="path" aria-label="Data path">Amazfit → Zepp → Intervals.icu → {{ app_name }} → Livelox</p>
 
   <div class="card">
     <h2>Why this exists</h2>
-    <p>Livelox can pull routes automatically from Garmin Connect, Polar Flow, Suunto and Coros. Amazfit / Zepp is not on that list.</p>
+    <p>Livelox can pull routes on its own from Garmin Connect, Polar Flow, Suunto and Coros. Amazfit / Zepp is not on that list.</p>
     <p>For a while the workaround was <strong>Zepp → Strava → Livelox</strong>. Zepp still has an official Strava link, and Livelox used to import Strava activities. In December 2024 Strava changed its API terms and Livelox dropped that connection. For Amazfit that path is a dead end.</p>
-    <p>Other “obvious” hubs do not work either:</p>
+    <p>Other apparent shortcuts do not work either:</p>
     <ul>
       <li>Zepp has no official export to Garmin, Polar, Suunto or Coros.</li>
       <li>Garmin forbids third parties from writing activities into Connect, so you cannot park a Zepp track there and wait for Livelox.</li>
       <li>You cannot add your own app to Zepp’s 3rd-party list without a partnership with Zepp Health.</li>
     </ul>
-    <p>Without a bridge, each session means a manual GPX export and a manual upload to Livelox.</p>
+    <p>Without an automatic transfer, each session means exporting a GPX by hand and uploading it to Livelox yourself.</p>
   </div>
 
   <div class="card">
-    <h2>Why this method</h2>
+    <h2>Why this route</h2>
     <p>Intervals.icu is one of the few services Zepp already pushes workouts to (3rd-party account linking in the Zepp app). It also has an API that can list and download your FIT/GPX files.</p>
     <p>Livelox has a Route Integration API. After you consent (OAuth, scope <code>routes.import</code>), a track can be created <strong>as your activity</strong> — the same idea as the official Garmin link, only in reverse: you connect from here, not from Livelox settings.</p>
-    <p>{{ app_name }} joins those two ends. It runs on this host, polls Intervals.icu on a schedule, and posts matching GPS activities to Livelox in your name. It is not a product of Zepp Health, Intervals.icu or Livelox.</p>
+    <p>{{ app_name }} joins those two ends. It runs on this server, looks into Intervals.icu on a schedule, and sends matching GPS activities to Livelox in your name. It is not a product of Zepp Health, Intervals.icu or Livelox.</p>
   </div>
 
   <div class="card">
     <h2>What setup looks like</h2>
     <ol class="steps">
-      <li>Create an <a href="https://intervals.icu" rel="noopener">Intervals.icu</a> account and, in the Zepp app, turn on <em>3rd-party account linking</em> to Intervals.icu. Until that is done, watch activities never reach the bridge.</li>
+      <li>Create an <a href="https://intervals.icu" rel="noopener">Intervals.icu</a> account and, in the Zepp app, turn on <em>3rd-party account linking</em> to Intervals.icu. Until that is done, watch activities never get here.</li>
       <li>Sign in here with a one-time e-mail code. There is no password; the first successful code creates the account.</li>
       <li>Paste an Intervals.icu API key into {{ app_name }}.</li>
       <li>Click <strong>Connect Livelox</strong>. Your browser opens Livelox, you allow route import, and you return here.</li>
-      <li>Pick sports and switch sync on. After a run, the bridge typically picks up the new GPS activity within about half an hour and uploads it to Livelox.</li>
+      <li>Pick sports and switch the transfer on. After a run, {{ app_name }} typically picks up the new GPS activity within about half an hour and uploads it to Livelox.</li>
     </ol>
-    <p class="note">Sign-in is live now. Intervals.icu and Livelox linking in the UI comes next — you can already create an account.</p>
+    <p class="note">Sign-in is live now. Intervals.icu and Livelox linking in the UI comes next — you can already create an account. You can stop the transfer or delete the account at any time in Settings.</p>
     <a class="button" href="/login?lang=en">{{ t.login_cta }}</a>
   </div>
 
   <div class="card">
     <h2>Privacy and how data is handled</h2>
-    <p>{{ app_name }} stores only what the bridge needs:</p>
+    <p>{{ app_name }} stores only what it needs for the transfer:</p>
     <ul>
       <li>your e-mail (login codes and account identity),</li>
       <li>an encrypted Intervals.icu API key and Livelox OAuth tokens,</li>
@@ -49,51 +49,51 @@
       <li>a seven-day import log (activity title, sport, status).</li>
     </ul>
     <p>GPS files are <strong>not kept</strong>. They are downloaded, posted to Livelox, and discarded.</p>
-    <p>Login codes are sent by e-mail from the operator of this instance. Tokens in the database are encrypted with a key on the server — a database dump alone cannot log into Intervals.icu or Livelox.</p>
-    <p>Nothing is sold or sent anywhere else: Intervals.icu is queried for <em>your</em> activities, and Livelox receives only the routes you authorised. You can disconnect both in Settings. To delete the account from the database, ask the operator of this instance.</p>
+    <p>Login codes are sent by e-mail from whoever runs this site. Tokens in the database are encrypted with a key on the server — a database dump alone cannot log into Intervals.icu or Livelox.</p>
+    <p>Nothing is sold or sent anywhere else: Intervals.icu is queried for <em>your</em> activities, and Livelox receives only the routes you authorised. In Settings you can stop the sync, disconnect the services, or delete the account. Deleting removes your e-mail, keys and log from this site. Routes already in Livelox or Intervals.icu stay there.</p>
     <p>Details are in the <a href="/privacy?lang=en">privacy policy</a>.</p>
   </div>
 {% else %}
-  <h1>Synchronizace tras Zepp → Livelox</h1>
-  <p class="lead">{{ app_name }} je samostatný most pro orienťáky s hodinkami Amazfit. Vezme GPS stopu, kterou Zepp už oficiálně posílá do Intervals.icu, a nahraje ji pod váš účet v Liveloxu.</p>
+  <h1>Přenos tras z Zeppu do Liveloxu</h1>
+  <p class="lead">{{ app_name }} posílá GPS stopy z hodinek Amazfit do vašeho účtu v Liveloxu. Zepp je umí oficiálně posílat do Intervals.icu; odtud je {{ app_name }} v pravidelných intervalech nahraje do Liveloxu.</p>
   <p class="path" aria-label="Cesta dat">Amazfit → Zepp → Intervals.icu → {{ app_name }} → Livelox</p>
 
   <div class="card">
     <h2>Proč to existuje</h2>
-    <p>Livelox umí automaticky tahat trasy z Garmin Connect, Polar Flow, Suunto a Coros. Amazfit / Zepp v tom seznamu není.</p>
+    <p>Livelox si trasy tahá sám z Garmin Connect, Polar Flow, Suunto a Coros. Amazfit / Zepp v tom seznamu není.</p>
     <p>Dlouho šla použít oklika <strong>Zepp → Strava → Livelox</strong>. Zepp má Stravu oficiálně a Livelox ze Stravy trasy bral. V prosinci 2024 Strava změnila podmínky API a Livelox to napojení vypnul. Pro Amazfit je to slepá cesta.</p>
-    <p>Další zdánlivé mosty taky nefungují:</p>
+    <p>Jiné zdánlivé cesty taky nejdou:</p>
     <ul>
       <li>Zepp nemá oficiální export do Garminu, Polaru, Suunto ani Corosu.</li>
       <li>Garmin třetím stranám zakazuje nahrávat aktivity do Connectu — stopu ze Zeppu tam nejde „zaparkovat“ a čekat, až ji Livelox stáhne.</li>
       <li>Vlastní službu do seznamu partnerů Zeppu jen tak nepřidáte; je k tomu partnerská dohoda se Zepp Health.</li>
     </ul>
-    <p>Bez mostu zbývá po každém tréninku ruční export GPX a ruční nahrání do Liveloxu.</p>
+    <p>Bez automatického přenosu zbývá po každém tréninku ručně vyexportovat GPX a nahrát ho do Liveloxu.</p>
   </div>
 
   <div class="card">
-    <h2>Proč právě tento způsob</h2>
+    <h2>Proč právě tahle cesta</h2>
     <p>Intervals.icu je jedna z mála služeb, kam Zepp aktivity posílá oficiálně (napojení účtů v aplikaci Zepp). Má i API na seznam a stažení vašich souborů FIT/GPX.</p>
     <p>Livelox má Route Integration API. Po vašem souhlasu (OAuth, oprávnění <code>routes.import</code>) jde trasu založit <strong>jako vaši aktivitu</strong> — stejný princip jako oficiální napojení Garminu, jen obráceně: propojujete odsud, ne v nastavení Liveloxu.</p>
-    <p>{{ app_name }} ty dva konce spojuje. Běží na tomto serveru, v pravidelných intervalech se ptá Intervals.icu a odpovídající GPS aktivity posílá do Liveloxu vaším jménem. Není to produkt Zepp Health, Intervals.icu ani Liveloxu.</p>
+    <p>{{ app_name }} ty dva konce spojuje. Běží tady na serveru, občas se podívá do Intervals.icu a odpovídající GPS aktivity pošle do Liveloxu vaším jménem. Není to služba Zepp Health, Intervals.icu ani Liveloxu.</p>
   </div>
 
   <div class="card">
     <h2>Co vás čeká v nastavení</h2>
     <ol class="steps">
-      <li>Účet na <a href="https://intervals.icu" rel="noopener">Intervals.icu</a> a v aplikaci Zepp zapnout <em>3rd-party account linking</em> na Intervals.icu. Bez toho se aktivity z hodinek do mostu nedostanou.</li>
+      <li>Účet na <a href="https://intervals.icu" rel="noopener">Intervals.icu</a> a v aplikaci Zepp zapnout <em>3rd-party account linking</em> na Intervals.icu. Bez toho se aktivity z hodinek sem nedostanou.</li>
       <li>Přihlášení zde jednorázovým kódem na e-mail. Heslo není; první ověření účet založí.</li>
       <li>Do {{ app_name }} vložíte API klíč z Intervals.icu.</li>
       <li>Tlačítko <strong>Propojit Livelox</strong> — prohlížeč vás pošle na Livelox, odsouhlasíte import tras a vrátíte se sem.</li>
-      <li>Vyberete sporty a zapnete synchronizaci. Po běhu most novou GPS aktivitu typicky najde do půl hodiny a nahraje ji do Liveloxu.</li>
+      <li>Vyberete sporty a zapnete přenos. Po běhu {{ app_name }} novou GPS aktivitu typicky najde do půl hodiny a nahraje ji do Liveloxu.</li>
     </ol>
-    <p class="note">Přihlášení už funguje. Napojení Intervals.icu a Liveloxu v rozhraní zapneme v dalším kroku — účet si můžete založit teď.</p>
+    <p class="note">Přihlášení už funguje. Napojení Intervals.icu a Liveloxu v rozhraní zapneme v dalším kroku — účet si můžete založit teď. Synchronizaci můžete kdykoli zastavit a účet smazat v nastavení.</p>
     <a class="button" href="/login">{{ t.login_cta }}</a>
   </div>
 
   <div class="card">
     <h2>Soukromí a práce s daty</h2>
-    <p>{{ app_name }} ukládá jen to, bez čeho most nefunguje:</p>
+    <p>{{ app_name }} ukládá jen to, co k přenosu potřebuje:</p>
     <ul>
       <li>e-mail (přihlášení kódem a identifikace účtu),</li>
       <li>šifrovaný API klíč Intervals.icu a tokeny Liveloxu,</li>
@@ -101,8 +101,8 @@
       <li>sedmidenní protokol importů (název aktivity, sport, stav).</li>
     </ul>
     <p>GPS soubory se <strong>neukládají</strong>. Stáhnou se, odešlou do Liveloxu a zahodí.</p>
-    <p>Přihlašovací kódy posílá e-mailem provozovatel této instance. Tokeny v databázi jsou šifrované klíčem na serveru — výpis databáze sám o sobě nestačí k přihlášení do Intervals.icu nebo Liveloxu.</p>
-    <p>Data se neprodávají a neposílají nikam jinam: Intervals.icu se ptáme na <em>vaše</em> aktivity a do Liveloxu jdou jen trasy, které odsouhlasíte. Účty lze v nastavení odpojit. Smazání účtu z databáze řeší provozovatel této instance.</p>
+    <p>Přihlašovací kódy posílá e-mailem ten, kdo tenhle web provozuje. Tokeny v databázi jsou šifrované klíčem na serveru — výpis databáze sám o sobě nestačí k přihlášení do Intervals.icu nebo Liveloxu.</p>
+    <p>Data se neprodávají a neposílají nikam jinam: Intervals.icu se ptáme na <em>vaše</em> aktivity a do Liveloxu jdou jen trasy, které odsouhlasíte. V nastavení můžete přenos zastavit, služby odpojit, nebo účet smazat. Smazání odstraní e-mail, klíče a protokol z tohoto webu. Co už je v Liveloxu nebo v Intervals.icu, zůstane.</p>
     <p>Podrobnosti jsou v <a href="/privacy">zásadách soukromí</a>.</p>
   </div>
 {% endif %}

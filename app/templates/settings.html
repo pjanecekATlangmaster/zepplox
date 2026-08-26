@@ -3,8 +3,44 @@
 {% block content %}
   <p><a href="/">{{ t.back_overview }}</a></p>
   <h1>{{ t.settings }}</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if notice == "sync_off" %}<p class="notice">{{ t.sync_stopped }}</p>{% endif %}
+  {% if notice == "sync_on" %}<p class="notice">{{ t.sync_started }}</p>{% endif %}
+
   <div class="card">
     <p>{{ t.account_label }}: <strong>{{ user.email }}</strong></p>
     <p class="lead">{{ t.settings_pending }}</p>
+  </div>
+
+  <div class="card">
+    <h2>{{ t.sync_title }}</h2>
+    {% if sync_enabled %}
+      <p>{{ t.sync_on }}</p>
+      <form method="post" action="/settings/sync">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="enabled" value="0">
+        <button class="ghost" type="submit">{{ t.sync_stop }}</button>
+      </form>
+    {% else %}
+      <p>{{ t.sync_off }}</p>
+      <form method="post" action="/settings/sync">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="enabled" value="1">
+        <button type="submit">{{ t.sync_start }}</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>{{ t.delete_title }}</h2>
+    <p>{{ t.delete_lead }}</p>
+    <form method="post" action="/settings/delete">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="check">
+        <input type="checkbox" name="confirm" value="delete">
+        <span>{{ t.delete_confirm }}</span>
+      </label>
+      <button class="danger" type="submit">{{ t.delete_submit }}</button>
+    </form>
   </div>
 {% endblock %}

@@ -10,10 +10,12 @@
   <header>
     <a class="brand" href="/{% if lang == 'en' %}?lang=en{% endif %}"><strong>{{ app_name }}</strong></a>
     <div class="header-right">
-      <a class="github" href="{{ github_url }}" rel="noopener" target="_blank">{{ t.github }}</a>
       <nav class="lang" aria-label="{{ t.lang_label }}">
-        <a href="{{ request.url.path }}?lang=cs"{% if lang == "cs" %} aria-current="true"{% endif %}>{{ t.lang_cs }}</a>
-        <a href="{{ request.url.path }}?lang=en"{% if lang == "en" %} aria-current="true"{% endif %}>{{ t.lang_en }}</a>
+        {% if lang == "cs" %}
+          <a href="{{ request.url.path }}?lang=en">{{ t.lang_en }}</a>
+        {% else %}
+          <a href="{{ request.url.path }}?lang=cs">{{ t.lang_cs }}</a>
+        {% endif %}
       </nav>
     </div>
   </header>

@@ -10,6 +10,8 @@ Amazfit watch → Zepp → Intervals.icu → ZeppLox → Livelox
 
 This project is not affiliated with Zepp Health, Amazfit, Intervals.icu, or Livelox. It does not replace Livelox and does not expose Livelox maps or other people’s routes.
 
+Notable changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## What operators and athletes do
 
 1. Link Zepp to Intervals.icu (Zepp app: *3rd-party account linking*, or Intervals.icu Settings).

@@ -67,11 +67,26 @@ def download_fit(api_key: str, activity_id: str) -> bytes:
         return response.content
 
 
+def _stream_types(activity: dict) -> list[str]:
+    raw = activity.get("stream_types")
+    if isinstance(raw, str):
+        return [part.strip().lower() for part in raw.split(",") if part.strip()]
+    if isinstance(raw, list):
+        return [str(part).strip().lower() for part in raw if part]
+    return []
+
+
 def activity_has_gps(activity: dict) -> bool:
+    """Intervals.icu often leaves has_map / start_latlng empty on GPX uploads."""
     if activity.get("has_map") is True:
         return True
     start = activity.get("icu_start_latlng") or activity.get("start_latlng")
-    return bool(start)
+    if start:
+        return True
+    if "latlng" in _stream_types(activity):
+        return True
+    file_type = str(activity.get("file_type") or "").lower().lstrip(".")
+    return file_type in {"gpx", "tcx"}
 
 
 def summarize_activity(activity: dict) -> dict[str, object]:

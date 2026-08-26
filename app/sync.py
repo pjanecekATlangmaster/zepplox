@@ -147,27 +147,23 @@ def import_one_activity(
     activity_id, title, sport, duration = _activity_fields(activity)
     if not activity_id:
         return "skipped"
-    if skip_if_done:
-        previous = _previous_import(db, user.id, activity_id)
-        if previous is not None and previous.status in {"imported", "skipped"}:
-            return "done"
+    previous = _previous_import(db, user.id, activity_id) if skip_if_done else None
+    if previous is not None and previous.status == "imported":
+        return "done"
+    skip_message = ""
     if not ignore_filters and prefs is not None:
         if sport not in _sports(prefs):
+            skip_message = "Sport není zapnutý"
+        elif prefs.require_gps and not activity_has_gps(activity):
+            skip_message = "Aktivita nemá GPS"
+        elif prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
+            skip_message = "Příliš krátká aktivita"
+        if skip_message:
+            if previous is not None and previous.status == "skipped":
+                return "done"
             _log_row(
                 db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Sport není zapnutý",
-            )
-            return "skipped"
-        if prefs.require_gps and not activity_has_gps(activity):
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Aktivita nemá GPS",
-            )
-            return "skipped"
-        if prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Příliš krátká aktivita",
+                status="skipped", message=skip_message,
             )
             return "skipped"
     elif not activity_has_gps(activity):

@@ -14,8 +14,13 @@ from app.config import Settings
 AUTHORIZE = "https://api.livelox.com/oauth2/authorize"
 TOKEN = "https://api.livelox.com/oauth2/token"
 REVOKE = "https://api.livelox.com/oauth2/revoke"
+USERINFO = "https://api.livelox.com/oauth2/userinfo"
 IMPORT_ROUTES = "https://api.livelox.com/importableRoutes"
 SCOPE = "routes.import"
+
+
+class LiveloxOAuthError(Exception):
+    """Authorization code exchange failed."""
 
 
 def _b64url(raw: bytes) -> str:
@@ -53,8 +58,11 @@ def exchange_code(settings: Settings, code: str, verifier: str) -> dict:
         "redirect_uri": settings.livelox_callback,
     }
     response = httpx.post(TOKEN, data=data, timeout=30.0)
-    response.raise_for_status()
+    if response.status_code >= 400:
+        raise LiveloxOAuthError(f"token exchange HTTP {response.status_code}")
     payload = response.json()
+    if not payload.get("access_token"):
+        raise LiveloxOAuthError("token response missing access_token")
     return _with_expiry(payload)
 
 
@@ -76,6 +84,31 @@ def _with_expiry(payload: dict) -> dict:
     expires_in = int(payload.get("expires_in") or 86400)
     payload["expires_at"] = (datetime.now(UTC) + timedelta(seconds=expires_in - 60)).isoformat()
     return payload
+
+
+def fetch_userinfo_name(access_token: str) -> str:
+    try:
+        response = httpx.get(
+            USERINFO,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        name = " ".join(
+            part
+            for part in (payload.get("given_name"), payload.get("family_name"))
+            if part
+        ).strip()
+    if not name:
+        name = str(payload.get("email") or payload.get("preferred_username") or "").strip()
+    return name[:200]
 
 
 def tokens_need_refresh(stored: dict) -> bool:
@@ -127,6 +160,11 @@ def revoke_token(settings: Settings, token: str) -> None:
         )
     except httpx.HTTPError:
         return
+
+
+def revoke_stored(settings: Settings, stored: dict) -> None:
+    revoke_token(settings, str(stored.get("refresh_token") or ""))
+    revoke_token(settings, str(stored.get("access_token") or ""))
 
 
 def dump_tokens(payload: dict) -> str:

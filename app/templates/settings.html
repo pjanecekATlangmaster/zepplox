@@ -8,6 +8,9 @@
   {% if notice == "sync_on" %}<p class="notice">{{ t.sync_started }}</p>{% endif %}
   {% if notice == "intervals_gone" %}<p class="notice">{{ t.intervals_gone }}</p>{% endif %}
   {% if notice == "intervals_saved" %}<p class="notice">{{ t.intervals_saved }}</p>{% endif %}
+  {% if notice == "livelox_ok" %}<p class="notice">{{ t.livelox_ok }}</p>{% endif %}
+  {% if notice == "livelox_gone" %}<p class="notice">{{ t.livelox_gone }}</p>{% endif %}
+  {% if notice == "sports_saved" %}<p class="notice">{{ t.sports_saved }}</p>{% endif %}
 
   <div class="card">
     <p>{{ t.account_label }}: <strong>{{ user.email }}</strong></p>
@@ -48,6 +51,38 @@
   </div>
 
   <div class="card">
+    <h2>{{ t.livelox_title }}
+      {% if livelox_connected %}
+        <span class="pill ok">{{ t.livelox_status_on }}</span>
+      {% else %}
+        <span class="pill off">{{ t.livelox_status_off }}</span>
+      {% endif %}
+    </h2>
+    {% if livelox_connected %}
+      <p class="notice">{% if livelox_name and livelox_name != "Livelox" %}{{ t.livelox_connected.format(name=livelox_name) }}{% else %}{{ t.livelox_connected_plain }}{% endif %}</p>
+    {% endif %}
+    <p>{{ t.livelox_lead }}</p>
+    <p>{{ t.livelox_docs }}
+      <a href="https://www.livelox.com/Documentation/Api/OAuth2" rel="noopener" target="_blank">OAuth2</a>,
+      <a href="https://www.livelox.com/Documentation/Api/RouteIntegration" rel="noopener" target="_blank">Route Integration</a>.
+    </p>
+    {% if not livelox_configured %}
+      <p class="error">{{ t.livelox_not_configured.format(callback=livelox_callback) }}</p>
+    {% else %}
+      <form method="post" action="/oauth/livelox/start">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">{% if livelox_connected %}{{ t.livelox_reconnect }}{% else %}{{ t.livelox_connect }}{% endif %}</button>
+      </form>
+    {% endif %}
+    {% if livelox_connected %}
+      <form method="post" action="/settings/livelox/disconnect">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="ghost" type="submit">{{ t.livelox_disconnect }}</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
     <h2>{{ t.sync_title }}</h2>
     {% if sync_enabled %}
       <p>{{ t.sync_on }}</p>
@@ -64,6 +99,20 @@
         <button type="submit">{{ t.sync_start }}</button>
       </form>
     {% endif %}
+    <h2>{{ t.sports_title }}</h2>
+    <p>{{ t.sports_lead }}</p>
+    <form method="post" action="/settings/sports">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="sports">
+        {% for code, label in sport_choices %}
+          <label class="check">
+            <input type="checkbox" name="sport" value="{{ code }}"{% if code in selected_sports %} checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <button type="submit">{{ t.sports_save }}</button>
+    </form>
   </div>
 
   <div class="card">

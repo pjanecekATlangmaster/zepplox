@@ -14,12 +14,36 @@
     </nav>
   </div>
 
-  {% if not intervals_connected %}
-    <div class="card">
+  <div class="card">
+    <p>
+      {{ t.intervals_title }}
+      {% if intervals_connected %}
+        <span class="pill ok">{{ t.intervals_status_on }}</span>
+      {% else %}
+        <span class="pill off">{{ t.intervals_status_off }}</span>
+      {% endif %}
+      {{ t.livelox_title }}
+      {% if livelox_connected %}
+        <span class="pill ok">{{ t.livelox_status_on }}</span>
+      {% else %}
+        <span class="pill off">{{ t.livelox_status_off }}</span>
+      {% endif %}
+    </p>
+    {% if intervals_connected and livelox_connected %}
+      <p class="notice">{{ t.livelox_ready }}</p>
+    {% elif intervals_connected %}
+      <p>{{ t.livelox_need_connect }}</p>
+      <p><a class="button" href="/settings">{{ t.livelox_connect }}</a></p>
+    {% else %}
       <p>{{ t.overview_ok }}</p>
-      <p><a class="button" href="/settings">{{ t.intervals_title }}</a></p>
-    </div>
-  {% else %}
+      <p><a class="button" href="/settings">{{ t.settings }}</a></p>
+    {% endif %}
+  </div>
+
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if notice == "manual_ok" %}<p class="notice">{{ t.manual_ok.format(ok=sent_ok, err=sent_err) }}</p>{% endif %}
+
+  {% if intervals_connected %}
     <div class="card">
       <h2>{{ t.activities_title }}</h2>
       <p>{{ t.intervals_connected.format(name=intervals_name) }}</p>
@@ -28,32 +52,66 @@
         <p class="error">{{ fetch_error }}</p>
       {% elif activities %}
         <p class="notice">{{ t.activities_count.format(count=activities|length) }}</p>
+        {% if can_send %}
+        <form method="post" action="/activities/send">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <p class="note">{{ t.activities_send_hint.format(limit=manual_limit) }}</p>
+        {% else %}
+          <p class="note">{{ t.activities_need_livelox }}</p>
+        {% endif %}
         <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              {% if can_send %}<th class="check">{{ t.col_send }}</th>{% endif %}
               <th>{{ t.col_when }}</th>
               <th>{{ t.col_name }}</th>
               <th>{{ t.col_sport }}</th>
               <th>{{ t.col_distance }}</th>
               <th>{{ t.col_time }}</th>
               <th>{{ t.col_gps }}</th>
+              <th>{{ t.col_status }}</th>
             </tr>
           </thead>
           <tbody>
             {% for item in activities %}
               <tr>
+                {% if can_send %}
+                  <td class="check">
+                    {% if item.has_gps %}
+                      <input type="checkbox" name="activity_id" value="{{ item.id }}">
+                    {% else %}
+                      <input type="checkbox" disabled>
+                    {% endif %}
+                  </td>
+                {% endif %}
                 <td>{{ item.start }}</td>
                 <td>{{ item.name }}</td>
-                <td>{{ item.sport }}</td>
+                <td>{{ t.get("sport_" ~ item.sport, item.sport) }}</td>
                 <td>{% if item.distance_km %}{{ t.km_unit.format(value=item.distance_km) }}{% else %}—{% endif %}</td>
                 <td>{% if item.duration_min %}{{ t.min_unit.format(value=item.duration_min) }}{% else %}—{% endif %}</td>
                 <td>{% if item.has_gps %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
+                <td>
+                  {% if item.import_status == "imported" %}
+                    <span class="pill ok">{{ t.status_imported }}</span>
+                  {% elif item.import_status == "error" %}
+                    <span class="pill off">{{ t.status_error }}</span>
+                  {% elif item.import_status == "skipped" %}
+                    <span class="pill off">{{ t.status_skipped }}</span>
+                  {% else %}
+                    —
+                  {% endif %}
+                  {% if item.import_message %}<div class="status">{{ item.import_message }}</div>{% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
         </div>
+        {% if can_send %}
+          <button type="submit">{{ t.activities_send }}</button>
+        </form>
+        {% endif %}
       {% else %}
         <p>{{ t.activities_empty.format(days=preview_days) }}</p>
       {% endif %}

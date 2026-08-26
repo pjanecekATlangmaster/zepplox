@@ -29,6 +29,26 @@ SPORT_CHOICES = [
     "VirtualRide",
     "VirtualRun",
 ]
+MANUAL_LIMIT = 8
+
+
+def parse_sports(raw: str | None) -> set[str]:
+    return {part.strip() for part in (raw or "").split(",") if part.strip()}
+
+
+def allowed_sports(raw: str | None) -> set[str]:
+    chosen = parse_sports(raw) & set(SPORT_CHOICES)
+    return chosen
+
+
+def dump_sports(codes: list[str]) -> str:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for code in codes:
+        if code in SPORT_CHOICES and code not in seen:
+            seen.add(code)
+            ordered.append(code)
+    return ",".join(ordered)
 
 
 def _as_fit(payload: bytes) -> bytes:
@@ -38,7 +58,7 @@ def _as_fit(payload: bytes) -> bytes:
 
 
 def _sports(settings_row: UserSettings) -> set[str]:
-    return {part.strip() for part in settings_row.sports.split(",") if part.strip()}
+    return allowed_sports(settings_row.sports)
 
 
 def _log_row(
@@ -83,22 +103,147 @@ def purge_old_logs(db: Session, settings: Settings) -> None:
     db.execute(delete(SyncRun).where(SyncRun.started_at < cutoff))
 
 
+def _activity_fields(activity: dict) -> tuple[str, str, str, int]:
+    activity_id = str(activity.get("id") or "")
+    title = str(activity.get("name") or activity_id)
+    sport = str(activity.get("type") or "")
+    duration = int(activity.get("elapsed_time") or activity.get("moving_time") or 0)
+    return activity_id, title, sport, duration
+
+
+def _previous_import(db: Session, user_id: int, activity_id: str) -> ImportLog | None:
+    return db.scalars(
+        select(ImportLog)
+        .where(ImportLog.user_id == user_id, ImportLog.intervals_activity_id == activity_id)
+        .order_by(ImportLog.id.desc())
+    ).first()
+
+
+def latest_imports(db: Session, user_id: int) -> dict[str, ImportLog]:
+    rows = db.scalars(
+        select(ImportLog)
+        .where(ImportLog.user_id == user_id, ImportLog.intervals_activity_id != "")
+        .order_by(ImportLog.id.desc())
+    ).all()
+    found: dict[str, ImportLog] = {}
+    for row in rows:
+        found.setdefault(row.intervals_activity_id, row)
+    return found
+
+
+def import_one_activity(
+    db: Session,
+    settings: Settings,
+    user: User,
+    api_key: str,
+    activity: dict,
+    *,
+    ignore_filters: bool = False,
+    skip_if_done: bool = True,
+) -> str:
+    prefs = user.settings
+    activity_id, title, sport, duration = _activity_fields(activity)
+    if not activity_id:
+        return "skipped"
+    if skip_if_done:
+        previous = _previous_import(db, user.id, activity_id)
+        if previous is not None and previous.status in {"imported", "skipped"}:
+            return "done"
+    if not ignore_filters and prefs is not None:
+        if sport not in _sports(prefs):
+            _log_row(
+                db, user.id, activity_id=activity_id, title=title, sport=sport,
+                status="skipped", message="Sport není zapnutý",
+            )
+            return "skipped"
+        if prefs.require_gps and not activity_has_gps(activity):
+            _log_row(
+                db, user.id, activity_id=activity_id, title=title, sport=sport,
+                status="skipped", message="Aktivita nemá GPS",
+            )
+            return "skipped"
+        if prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
+            _log_row(
+                db, user.id, activity_id=activity_id, title=title, sport=sport,
+                status="skipped", message="Příliš krátká aktivita",
+            )
+            return "skipped"
+    elif not activity_has_gps(activity):
+        _log_row(
+            db, user.id, activity_id=activity_id, title=title, sport=sport,
+            status="error", message="Aktivita nemá GPS",
+        )
+        return "error"
+
+    try:
+        access = _livelox_access(db, settings, user.id)
+    except Exception as exc:
+        _log_row(
+            db, user.id, activity_id=activity_id, title=title, sport=sport,
+            status="error", message=f"Livelox token: {exc}",
+        )
+        return "error"
+    if access is None:
+        _log_row(
+            db, user.id, activity_id=activity_id, title=title, sport=sport,
+            status="error", message="Livelox není propojený",
+        )
+        return "error"
+
+    try:
+        fit = _as_fit(download_fit(api_key, activity_id))
+        posted = import_route(access, f"zepplox-{activity_id}"[:48], fit)
+        route_id = str(posted.get("id") or f"zepplox-{activity_id}")
+        event_name = ""
+        final_status = "pending"
+        for _ in range(8):
+            time.sleep(2)
+            meta = import_status(access, route_id)
+            final_status = str(meta.get("status") or "pending")
+            if final_status == "imported":
+                event_name = " / ".join(
+                    part
+                    for part in (meta.get("eventName"), meta.get("className"), meta.get("viewerUrl"))
+                    if part
+                )
+                break
+            if final_status == "error":
+                raise RuntimeError(meta.get("errorMessage") or "Livelox import error")
+        message = "Importováno" if final_status == "imported" else "Odesláno, Livelox ještě zpracovává"
+        _log_row(
+            db, user.id, activity_id=activity_id, title=title, sport=sport,
+            status="imported", message=message, event=event_name,
+        )
+        return "imported"
+    except Exception as exc:
+        _log_row(
+            db, user.id, activity_id=activity_id, title=title, sport=sport,
+            status="error", message=str(exc),
+        )
+        return "error"
+
+
+def _intervals_key(db: Session, user: User) -> str | None:
+    intervals = connection_for(db, user.id, "intervals")
+    if intervals is None:
+        return None
+    return read_connection_secret(intervals)
+
+
 def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, int]:
     imported = skipped = errors = 0
     prefs = user.settings
     if prefs is None or not prefs.sync_enabled:
         return 0, 0, 0
 
-    intervals = connection_for(db, user.id, "intervals")
-    if intervals is None:
-        _log_row(db, user.id, status="error", message="Intervals.icu není propojené")
-        prefs.last_sync_at = utcnow()
-        return 0, 0, 1
-
     try:
-        api_key = read_connection_secret(intervals)
+        api_key = _intervals_key(db, user)
     except ValueError as exc:
         _log_row(db, user.id, status="error", message=str(exc))
+        prefs.last_sync_at = utcnow()
+        return 0, 0, 1
+    if api_key is None:
+        _log_row(db, user.id, status="error", message="Intervals.icu není propojené")
         prefs.last_sync_at = utcnow()
         return 0, 0, 1
 
@@ -111,94 +256,69 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
         prefs.last_sync_at = utcnow()
         return 0, 0, 1
 
-    allowed = _sports(prefs)
     for activity in activities:
-        activity_id = str(activity.get("id") or "")
-        title = str(activity.get("name") or activity_id)
-        sport = str(activity.get("type") or "")
-        duration = int(activity.get("elapsed_time") or activity.get("moving_time") or 0)
-
-        if not activity_id:
-            continue
-        previous = db.scalars(
-            select(ImportLog)
-            .where(ImportLog.user_id == user.id, ImportLog.intervals_activity_id == activity_id)
-            .order_by(ImportLog.id.desc())
-        ).first()
-        if previous is not None and previous.status in {"imported", "skipped"}:
-            continue
-        if sport not in allowed:
-            skipped += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Sport není zapnutý",
-            )
-            continue
-        if prefs.require_gps and not activity_has_gps(activity):
-            skipped += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Aktivita nemá GPS",
-            )
-            continue
-        if prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
-            skipped += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="skipped", message="Příliš krátká aktivita",
-            )
-            continue
-
-        try:
-            access = _livelox_access(db, settings, user.id)
-        except Exception as exc:
-            errors += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="error", message=f"Livelox token: {exc}",
-            )
-            continue
-        if access is None:
-            errors += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="error", message="Livelox není propojený",
-            )
-            continue
-
-        try:
-            fit = _as_fit(download_fit(api_key, activity_id))
-            posted = import_route(access, f"zepplox-{activity_id}"[:48], fit)
-            route_id = str(posted.get("id") or f"zepplox-{activity_id}")
-            event_name = ""
-            final_status = "pending"
-            for _ in range(8):
-                time.sleep(2)
-                meta = import_status(access, route_id)
-                final_status = str(meta.get("status") or "pending")
-                if final_status == "imported":
-                    event_name = " / ".join(
-                        part
-                        for part in (meta.get("eventName"), meta.get("className"), meta.get("viewerUrl"))
-                        if part
-                    )
-                    break
-                if final_status == "error":
-                    raise RuntimeError(meta.get("errorMessage") or "Livelox import error")
+        result = import_one_activity(db, settings, user, api_key, activity)
+        if result == "imported":
             imported += 1
-            message = "Importováno" if final_status == "imported" else "Odesláno, Livelox ještě zpracovává"
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="imported", message=message, event=event_name,
-            )
-        except Exception as exc:
+        elif result == "error":
             errors += 1
-            _log_row(
-                db, user.id, activity_id=activity_id, title=title, sport=sport,
-                status="error", message=str(exc),
-            )
+        elif result == "skipped":
+            skipped += 1
 
     prefs.last_sync_at = utcnow()
+    return imported, skipped, errors
+
+
+def import_selected(
+    db: Session,
+    settings: Settings,
+    user: User,
+    activity_ids: list[str],
+) -> tuple[int, int, int]:
+    chosen: list[str] = []
+    seen: set[str] = set()
+    for raw in activity_ids:
+        activity_id = str(raw).strip()
+        if not activity_id or activity_id in seen:
+            continue
+        seen.add(activity_id)
+        chosen.append(activity_id)
+        if len(chosen) >= MANUAL_LIMIT:
+            break
+    if not chosen:
+        return 0, 0, 0
+
+    api_key = _intervals_key(db, user)
+    if not api_key:
+        raise RuntimeError("intervals_missing")
+
+    newest = utcnow().date()
+    oldest = newest - timedelta(days=30)
+    activities = list_activities(api_key, oldest, newest)
+    by_id = {str(item.get("id") or ""): item for item in activities}
+    imported = skipped = errors = 0
+    for activity_id in chosen:
+        activity = by_id.get(activity_id)
+        if activity is None:
+            errors += 1
+            _log_row(
+                db, user.id, activity_id=activity_id,
+                status="error", message="Aktivita už v Intervals.icu není v posledních 30 dnech",
+            )
+            continue
+        result = import_one_activity(
+            db, settings, user, api_key, activity,
+            ignore_filters=True,
+            skip_if_done=False,
+        )
+        if result == "imported":
+            imported += 1
+        elif result == "error":
+            errors += 1
+        else:
+            skipped += 1
+    if user.settings is not None:
+        user.settings.last_sync_at = utcnow()
     return imported, skipped, errors
 
 

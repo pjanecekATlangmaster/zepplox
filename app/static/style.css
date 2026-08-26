@@ -131,5 +131,7 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line
 th { color: var(--muted); font-weight: 600; }
 .sports { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 16px; }
 .sports label { margin: 0; }
+th.check, td.check { width: 3.2rem; text-align: center; }
+.status { color: var(--muted); font-size: 0.8rem; margin-top: 4px; max-width: 16rem; }
 nav form { display: inline; }
 footer { color: var(--muted); font-size: 0.8rem; padding-bottom: 32px; }

@@ -19,7 +19,7 @@ This project is not affiliated with Zepp Health, Amazfit, Intervals.icu, or Live
 
 The HTTP service listens on **port 8456**. Point HTTPS (`zepplox.kibos.link` or your hostname) at that port.
 
-**Current milestone:** sign-in with a one-time e-mail code. Intervals.icu and Livelox import are not wired yet.
+**Current milestone:** sign-in, Intervals.icu API key, and Livelox OAuth (`routes.import`) in the UI. Automatic FIT import still needs a host cron (`python -m app.sync`).
 
 Configuration is **only** environment variables. Nothing in this repository is a working deployment: copy `.env.example` to `.env` **on the server**, fill it in, and keep `.env` out of git. GitHub Actions builds and publishes the Docker image; it must not contain hostnames, passwords, API keys, or SMTP settings.
 
@@ -81,7 +81,11 @@ Point HTTPS (`zepplox.kibos.link`) at port **8456**. MariaDB and SMTP stay outsi
 
 If DSM cannot resolve names (`temporary failure in name resolution`), compose already sets DNS `8.8.8.8` / `1.1.1.1`. Log into registry `ghcr.io` in Container Manager with a GitHub token that has `read:packages` (and `repo` if the package is private), same as for Livelox.
 
-Do not schedule `app.sync` until the Intervals → Livelox path exists.
+Do not schedule `app.sync` until Intervals.icu and Livelox are both connected in the UI and `LIVELOX_CLIENT_ID` is set. Then, every 30 minutes:
+
+```bash
+docker exec zepplox python -m app.sync
+```
 
 ## Data stored
 

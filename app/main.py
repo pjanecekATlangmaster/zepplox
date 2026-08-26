@@ -21,12 +21,14 @@ from app.accounts import (
     delete_user_account,
     ensure_user_settings,
     get_or_create_user,
+    livelox_tokens,
     normalize_email,
     recent_otp_count,
     read_connection_secret,
     upsert_connection,
     utcnow,
     connection_for,
+    DEFAULT_SPORTS,
 )
 from app.config import get_settings
 from app.db import get_db, init_db
@@ -40,8 +42,18 @@ from app.intervals import (
     list_activities,
     summarize_activity,
 )
+from app.livelox import (
+    LiveloxOAuthError,
+    authorize_url,
+    dump_tokens,
+    exchange_code,
+    fetch_userinfo_name,
+    new_pkce,
+    revoke_stored,
+)
 from app.mail import send_otp_email
 from app.models import User
+from app.sync import MANUAL_LIMIT, SPORT_CHOICES, dump_sports, import_selected, latest_imports, parse_sports
 
 log = logging.getLogger("zepplox")
 
@@ -120,8 +132,40 @@ def _ctx(request: Request, **extra):
     }
 
 
+def _sport_choices(t: dict[str, str]) -> list[tuple[str, str]]:
+    return [(code, t.get(f"sport_{code}", code)) for code in SPORT_CHOICES]
+
+
+def _selected_sports(user: User) -> set[str]:
+    raw = user.settings.sports if user.settings is not None else DEFAULT_SPORTS
+    return parse_sports(raw) & set(SPORT_CHOICES)
+
+
+def _attach_import_status(db: Session, user_id: int, activities: list[dict]) -> None:
+    logs = latest_imports(db, user_id)
+    for item in activities:
+        row = logs.get(str(item.get("id") or ""))
+        item["import_status"] = row.status if row else ""
+        item["import_message"] = row.message if row else ""
+        item["import_event"] = row.livelox_event if row else ""
+
+
 def _intervals_connected(db: Session, user_id: int):
     return connection_for(db, user_id, "intervals")
+
+
+def _livelox_connected(db: Session, user_id: int):
+    return connection_for(db, user_id, "livelox")
+
+
+def _revoke_livelox(db: Session, user_id: int) -> None:
+    row = _livelox_connected(db, user_id)
+    if row is None:
+        return
+    try:
+        revoke_stored(settings, livelox_tokens(row))
+    except Exception:
+        log.exception("Failed to revoke Livelox tokens for user %s", user_id)
 
 
 def _load_preview(db: Session, user_id: int, t: dict[str, str]):
@@ -135,6 +179,7 @@ def _load_preview(db: Session, user_id: int, t: dict[str, str]):
         oldest = newest - timedelta(days=PREVIEW_DAYS)
         raw = list_activities(api_key, oldest, newest)
         activities = [summarize_activity(item) for item in raw]
+        _attach_import_status(db, user_id, activities)
         return row, name, activities, None
     except IntervalsAuthError:
         return row, name, [], t["intervals_bad_key"]
@@ -180,15 +225,29 @@ def home(
         return _html(request, "landing.html")
     t = strings_for(resolve_lang(request))
     _row, intervals_name, activities, fetch_error = _load_preview(db, user.id, t)
+    livelox = _livelox_connected(db, user.id)
+    error_key = request.query_params.get("error") or ""
+    error = t.get(error_key) if error_key in t else None
+    notice = request.query_params.get("notice")
     return _html(
         request,
         "home.html",
         user=user,
         intervals_name=intervals_name,
         intervals_connected=bool(_row),
+        livelox_name=(livelox.extra if livelox else "") or "Livelox",
+        livelox_connected=livelox is not None,
+        livelox_configured=settings.livelox_configured,
         activities=activities,
         fetch_error=fetch_error,
         preview_days=PREVIEW_DAYS,
+        can_send=livelox is not None,
+        sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+        manual_limit=MANUAL_LIMIT,
+        notice=notice,
+        error=error,
+        sent_ok=request.query_params.get("ok") or "0",
+        sent_err=request.query_params.get("err") or "0",
     )
 
 
@@ -283,15 +342,22 @@ def _settings_html(
     notice: str | None = None,
     error: str | None = None,
 ):
-    row = _intervals_connected(db, user.id)
+    intervals = _intervals_connected(db, user.id)
+    livelox = _livelox_connected(db, user.id)
     return _html(
         request,
         "settings.html",
         status_code=status_code,
         user=user,
         sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
-        intervals_name=row.extra if row else "",
-        intervals_connected=row is not None,
+        intervals_name=intervals.extra if intervals else "",
+        intervals_connected=intervals is not None,
+        livelox_name=(livelox.extra if livelox else "") or "Livelox",
+        livelox_connected=livelox is not None,
+        livelox_configured=settings.livelox_configured,
+        livelox_callback=settings.livelox_callback,
+        selected_sports=_selected_sports(user),
+        sport_choices=_sport_choices(strings_for(resolve_lang(request))),
         notice=notice,
         error=error,
     )
@@ -303,7 +369,14 @@ def settings_page(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    return _settings_html(request, user, db, notice=request.query_params.get("notice"))
+    t = strings_for(resolve_lang(request))
+    error_key = request.query_params.get("error") or ""
+    error = None
+    if error_key in t:
+        error = t[error_key]
+        if "{callback}" in error:
+            error = error.format(callback=settings.livelox_callback)
+    return _settings_html(request, user, db, notice=request.query_params.get("notice"), error=error)
 
 
 @app.post("/settings/intervals")
@@ -357,6 +430,44 @@ def settings_sync(
     return RedirectResponse(f"/settings?notice={notice}", status_code=303)
 
 
+@app.post("/settings/sports")
+async def settings_sports(
+    request: Request,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _check_csrf(request, str(form.get("csrf") or ""))
+    row = ensure_user_settings(db, user)
+    row.sports = dump_sports([str(value) for value in form.getlist("sport")])
+    return RedirectResponse("/settings?notice=sports_saved", status_code=303)
+
+
+@app.post("/activities/send")
+async def activities_send(
+    request: Request,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    _check_csrf(request, str(form.get("csrf") or ""))
+    ids = [str(item).strip() for item in form.getlist("activity_id") if str(item).strip()]
+    if not ids:
+        return RedirectResponse("/?error=manual_none", status_code=303)
+    if _livelox_connected(db, user.id) is None:
+        return RedirectResponse("/?error=manual_livelox", status_code=303)
+    if _intervals_connected(db, user.id) is None:
+        return RedirectResponse("/?error=manual_intervals", status_code=303)
+    try:
+        imported, _skipped, errors = import_selected(db, settings, user, ids)
+    except IntervalsAuthError:
+        return RedirectResponse("/?error=intervals_bad_key", status_code=303)
+    except Exception:
+        log.exception("Manual Livelox send failed for user %s", user.id)
+        return RedirectResponse("/?error=manual_failed", status_code=303)
+    return RedirectResponse(f"/?notice=manual_ok&ok={imported}&err={errors}", status_code=303)
+
+
 @app.post("/settings/delete")
 def settings_delete(
     request: Request,
@@ -369,9 +480,75 @@ def settings_delete(
     t = strings_for(resolve_lang(request))
     if confirm != "delete":
         return _settings_html(request, user, db, status_code=400, error=t["delete_need_confirm"])
+    _revoke_livelox(db, user.id)
     delete_user_account(db, user)
     request.session.clear()
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/oauth/livelox/start")
+def livelox_start(
+    request: Request,
+    csrf: str = Form(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    t = strings_for(resolve_lang(request))
+    if not settings.livelox_configured:
+        return _settings_html(
+            request,
+            user,
+            db,
+            status_code=400,
+            error=t["livelox_not_configured"].format(callback=settings.livelox_callback),
+        )
+    verifier, challenge = new_pkce()
+    state = secrets.token_urlsafe(24)
+    request.session["livelox_oauth"] = {"state": state, "verifier": verifier}
+    return RedirectResponse(authorize_url(settings, state, challenge), status_code=303)
+
+
+@app.get("/oauth/livelox/callback")
+def livelox_callback(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(current_user),
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    pending = request.session.pop("livelox_oauth", None)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if error:
+        return RedirectResponse("/settings?error=livelox_denied", status_code=303)
+    if not isinstance(pending, dict) or pending.get("state") != state or not code:
+        return RedirectResponse("/settings?error=livelox_state", status_code=303)
+    try:
+        tokens = exchange_code(settings, code, pending["verifier"])
+        name = fetch_userinfo_name(tokens["access_token"])
+        upsert_connection(db, user.id, "livelox", dump_tokens(tokens), extra=name)
+    except LiveloxOAuthError:
+        log.exception("Livelox token exchange failed for user %s", user.id)
+        return RedirectResponse("/settings?error=livelox_token", status_code=303)
+    except Exception:
+        log.exception("Failed to store Livelox tokens for user %s", user.id)
+        return RedirectResponse("/settings?error=livelox_token", status_code=303)
+    return RedirectResponse("/settings?notice=livelox_ok", status_code=303)
+
+
+@app.post("/settings/livelox/disconnect")
+def settings_livelox_disconnect(
+    request: Request,
+    csrf: str = Form(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    _revoke_livelox(db, user.id)
+    delete_connection(db, user.id, "livelox")
+    return RedirectResponse("/settings?notice=livelox_gone", status_code=303)
 
 
 @app.get("/privacy", response_class=HTMLResponse)

@@ -89,6 +89,12 @@ docker logs zepplox
 docker exec zepplox python -m app.sync
 ```
 
+`pull-up.sh` on the NAS pulls `:latest`, recreates the container, then `docker image prune -f` so the previous untagged image does not stay on disk. To clean leftovers already there, run the same prune once:
+
+```bash
+sudo docker image prune -f
+```
+
 ## Data stored
 
 - E-mail of each user, settings, and a 7-day import log

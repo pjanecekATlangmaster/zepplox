@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import logging
+import threading
 import time
 from datetime import timedelta
 
@@ -16,6 +17,7 @@ from app.livelox import dump_tokens, import_route, import_status, refresh_access
 from app.models import ImportLog, SyncRun, User, UserSettings
 
 log = logging.getLogger("zepplox.sync")
+_sync_lock = threading.Lock()
 
 SPORT_CHOICES = [
     "Run",
@@ -323,35 +325,41 @@ def import_selected(
 
 
 def run_sync() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    settings = get_settings().require_runtime_secrets()
-    init_db()
-    run = SyncRun()
-    with session_scope() as db:
-        db.add(run)
-        db.flush()
-        purge_old_logs(db, settings)
-        users = list(db.scalars(select(User).options(selectinload(User.settings))).all())
-        imported = skipped = errors = 0
-        processed = 0
-        for user in users:
-            if user.settings is None:
-                continue
-            processed += 1
-            i, s, e = sync_user(db, settings, user)
-            imported += i
-            skipped += s
-            errors += e
-        run.users_processed = processed
-        run.imported_count = imported
-        run.skipped_count = skipped
-        run.error_count = errors
-        run.finished_at = utcnow()
-        run.note = f"zkontrolováno {processed} uživatelů"
-        log.info(
-            "sync finished users=%s imported=%s skipped=%s errors=%s",
-            processed, imported, skipped, errors,
-        )
+    if not _sync_lock.acquire(blocking=False):
+        log.warning("sync already running, skip")
+        return
+    try:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        settings = get_settings().require_runtime_secrets()
+        init_db()
+        run = SyncRun()
+        with session_scope() as db:
+            db.add(run)
+            db.flush()
+            purge_old_logs(db, settings)
+            users = list(db.scalars(select(User).options(selectinload(User.settings))).all())
+            imported = skipped = errors = 0
+            processed = 0
+            for user in users:
+                if user.settings is None:
+                    continue
+                processed += 1
+                i, s, e = sync_user(db, settings, user)
+                imported += i
+                skipped += s
+                errors += e
+            run.users_processed = processed
+            run.imported_count = imported
+            run.skipped_count = skipped
+            run.error_count = errors
+            run.finished_at = utcnow()
+            run.note = f"zkontrolováno {processed} uživatelů"
+            log.info(
+                "sync finished users=%s imported=%s skipped=%s errors=%s",
+                processed, imported, skipped, errors,
+            )
+    finally:
+        _sync_lock.release()
 
 
 if __name__ == "__main__":

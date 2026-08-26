@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -53,7 +54,7 @@ from app.livelox import (
 )
 from app.mail import send_otp_email
 from app.models import User
-from app.sync import MANUAL_LIMIT, SPORT_CHOICES, dump_sports, import_selected, latest_imports, parse_sports
+from app.sync import MANUAL_LIMIT, SPORT_CHOICES, dump_sports, import_selected, latest_imports, parse_sports, run_sync
 
 log = logging.getLogger("zepplox")
 
@@ -63,12 +64,41 @@ settings = get_settings()
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 
+async def _scheduled_sync_loop(minutes: int) -> None:
+    first_wait = min(120, max(minutes, 1) * 60)
+    log.info("Scheduled sync every %s min; first run in %s s", minutes, first_wait)
+    try:
+        await asyncio.sleep(first_wait)
+        while True:
+            try:
+                await asyncio.to_thread(run_sync)
+            except Exception:
+                log.exception("Scheduled sync failed")
+            await asyncio.sleep(max(minutes, 1) * 60)
+    except asyncio.CancelledError:
+        log.info("Scheduled sync stopped")
+        raise
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    get_settings().require_runtime_secrets()
+    runtime = get_settings().require_runtime_secrets()
     init_db()
-    yield
+    task = None
+    if runtime.sync_interval_minutes > 0:
+        task = asyncio.create_task(_scheduled_sync_loop(runtime.sync_interval_minutes))
+    else:
+        log.info("Scheduled sync is off (SYNC_INTERVAL_MINUTES=0)")
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, lifespan=lifespan)

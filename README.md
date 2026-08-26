@@ -19,7 +19,7 @@ This project is not affiliated with Zepp Health, Amazfit, Intervals.icu, or Live
 
 The HTTP service listens on **port 8456**. Point HTTPS (`zepplox.kibos.link` or your hostname) at that port.
 
-**Current milestone:** sign-in, Intervals.icu API key, and Livelox OAuth (`routes.import`) in the UI. Automatic FIT import still needs a host cron (`python -m app.sync`).
+**Current milestone:** sign-in, Intervals.icu, Livelox OAuth, sport filters, manual send, and automatic sync every 30 minutes in the container.
 
 Configuration is **only** environment variables. Nothing in this repository is a working deployment: copy `.env.example` to `.env` **on the server**, fill it in, and keep `.env` out of git. GitHub Actions builds and publishes the Docker image; it must not contain hostnames, passwords, API keys, or SMTP settings.
 
@@ -41,6 +41,7 @@ Configuration is **only** environment variables. Nothing in this repository is a
 | `OTP_MAX_PER_IP` | Max OTP e-mails per client IP per window (default 10) |
 | `LIVELOX_CLIENT_ID` | From [info@livelox.com](mailto:info@livelox.com); user-delegated access, scope `routes.import` |
 | `LIVELOX_REDIRECT_URI` | Optional; defaults to `{APP_BASE_URL}/oauth/livelox/callback` |
+| `SYNC_INTERVAL_MINUTES` | Automatic poll interval. `0` = off. The Docker image defaults to **30** |
 | `SYNC_LOOKBACK_HOURS` | How far back each poll looks |
 | `LOG_RETENTION_DAYS` | Sync log retention (default 7) |
 
@@ -81,9 +82,10 @@ Point HTTPS (`zepplox.kibos.link`) at port **8456**. MariaDB and SMTP stay outsi
 
 If DSM cannot resolve names (`temporary failure in name resolution`), compose already sets DNS `8.8.8.8` / `1.1.1.1`. Log into registry `ghcr.io` in Container Manager with a GitHub token that has `read:packages` (and `repo` if the package is private), same as for Livelox.
 
-Do not schedule `app.sync` until Intervals.icu and Livelox are both connected in the UI and `LIVELOX_CLIENT_ID` is set. Then, every 30 minutes:
+The image runs automatic sync every **30 minutes** (`SYNC_INTERVAL_MINUTES`). Set that variable to `0` to disable it. Users who turned sync off in Settings are skipped. Local `uvicorn` does not schedule sync unless you set the variable.
 
 ```bash
+docker logs zepplox
 docker exec zepplox python -m app.sync
 ```
 

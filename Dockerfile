@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 
 ENV PORT=8456 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    SYNC_INTERVAL_MINUTES=30
 
 EXPOSE 8456
 

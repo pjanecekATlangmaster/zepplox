@@ -17,17 +17,29 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.accounts import (
     consume_otp,
     create_otp,
+    delete_connection,
     delete_user_account,
     ensure_user_settings,
     get_or_create_user,
     normalize_email,
     recent_otp_count,
+    read_connection_secret,
+    upsert_connection,
     utcnow,
+    connection_for,
 )
 from app.config import get_settings
 from app.db import get_db, init_db
 from app.i18n import COOKIE as LANG_COOKIE
 from app.i18n import LANGS, resolve_lang, strings_for
+from app.intervals import (
+    IntervalsAuthError,
+    PREVIEW_DAYS,
+    athlete_display_name,
+    get_athlete,
+    list_activities,
+    summarize_activity,
+)
 from app.mail import send_otp_email
 from app.models import User
 
@@ -108,6 +120,29 @@ def _ctx(request: Request, **extra):
     }
 
 
+def _intervals_connected(db: Session, user_id: int):
+    return connection_for(db, user_id, "intervals")
+
+
+def _load_preview(db: Session, user_id: int, t: dict[str, str]):
+    row = _intervals_connected(db, user_id)
+    if row is None:
+        return None, "", [], None
+    name = row.extra or "Intervals.icu"
+    try:
+        api_key = read_connection_secret(row)
+        newest = utcnow().date()
+        oldest = newest - timedelta(days=PREVIEW_DAYS)
+        raw = list_activities(api_key, oldest, newest)
+        activities = [summarize_activity(item) for item in raw]
+        return row, name, activities, None
+    except IntervalsAuthError:
+        return row, name, [], t["intervals_bad_key"]
+    except Exception:
+        log.exception("Failed to list Intervals.icu activities for user %s", user_id)
+        return row, name, [], t["intervals_error"]
+
+
 def _html(request: Request, template: str, status_code: int = 200, **extra) -> HTMLResponse:
     lang = resolve_lang(request)
     response = templates.TemplateResponse(
@@ -139,10 +174,22 @@ def healthz(db: Session = Depends(get_db)) -> dict[str, str]:
 def home(
     request: Request,
     user: User | None = Depends(current_user),
+    db: Session = Depends(get_db),
 ):
     if user is None:
         return _html(request, "landing.html")
-    return _html(request, "home.html", user=user)
+    t = strings_for(resolve_lang(request))
+    _row, intervals_name, activities, fetch_error = _load_preview(db, user.id, t)
+    return _html(
+        request,
+        "home.html",
+        user=user,
+        intervals_name=intervals_name,
+        intervals_connected=bool(_row),
+        activities=activities,
+        fetch_error=fetch_error,
+        preview_days=PREVIEW_DAYS,
+    )
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -171,8 +218,15 @@ def login_start(
     if ip and recent_otp_count(db, ip=ip, window=window) >= settings.otp_max_per_ip:
         return _html(request, "login.html", status_code=429, error=t["error_otp_ip"])
     code = create_otp(db, settings, normalized, client_ip=ip)
+    returning = db.scalar(select(User.id).where(User.email == normalized)) is not None
     try:
-        send_otp_email(settings, normalized, code)
+        send_otp_email(
+            settings,
+            normalized,
+            code,
+            lang=resolve_lang(request),
+            returning=returning,
+        )
     except Exception:
         log.exception("Failed to send OTP to %s", normalized)
         return _html(request, "login.html", status_code=502, error=t["error_smtp"])
@@ -220,19 +274,72 @@ def logout(request: Request, csrf: str = Form(...)):
     return RedirectResponse("/login", status_code=303)
 
 
+def _settings_html(
+    request: Request,
+    user: User,
+    db: Session,
+    *,
+    status_code: int = 200,
+    notice: str | None = None,
+    error: str | None = None,
+):
+    row = _intervals_connected(db, user.id)
+    return _html(
+        request,
+        "settings.html",
+        status_code=status_code,
+        user=user,
+        sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+        intervals_name=row.extra if row else "",
+        intervals_connected=row is not None,
+        notice=notice,
+        error=error,
+    )
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
     user: User = Depends(require_user),
+    db: Session = Depends(get_db),
 ):
-    return _html(
-        request,
-        "settings.html",
-        user=user,
-        sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
-        notice=request.query_params.get("notice"),
-        error=None,
-    )
+    return _settings_html(request, user, db, notice=request.query_params.get("notice"))
+
+
+@app.post("/settings/intervals")
+def settings_intervals(
+    request: Request,
+    csrf: str = Form(...),
+    api_key: str = Form(""),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    t = strings_for(resolve_lang(request))
+    key = api_key.strip()
+    if not key:
+        return _settings_html(request, user, db, status_code=400, error=t["intervals_need_key"])
+    try:
+        name = athlete_display_name(get_athlete(key))
+        upsert_connection(db, user.id, "intervals", key, extra=name)
+    except IntervalsAuthError:
+        return _settings_html(request, user, db, status_code=400, error=t["intervals_bad_key"])
+    except Exception:
+        log.exception("Failed to verify Intervals.icu key for user %s", user.id)
+        return _settings_html(request, user, db, status_code=502, error=t["intervals_error"])
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/settings/intervals/disconnect")
+def settings_intervals_disconnect(
+    request: Request,
+    csrf: str = Form(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    delete_connection(db, user.id, "intervals")
+    return RedirectResponse("/settings?notice=intervals_gone", status_code=303)
 
 
 @app.post("/settings/sync")
@@ -261,15 +368,7 @@ def settings_delete(
     _check_csrf(request, csrf)
     t = strings_for(resolve_lang(request))
     if confirm != "delete":
-        return _html(
-            request,
-            "settings.html",
-            status_code=400,
-            user=user,
-            sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
-            notice=None,
-            error=t["delete_need_confirm"],
-        )
+        return _settings_html(request, user, db, status_code=400, error=t["delete_need_confirm"])
     delete_user_account(db, user)
     request.session.clear()
     return RedirectResponse("/", status_code=303)

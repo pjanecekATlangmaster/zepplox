@@ -6,10 +6,45 @@
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   {% if notice == "sync_off" %}<p class="notice">{{ t.sync_stopped }}</p>{% endif %}
   {% if notice == "sync_on" %}<p class="notice">{{ t.sync_started }}</p>{% endif %}
+  {% if notice == "intervals_gone" %}<p class="notice">{{ t.intervals_gone }}</p>{% endif %}
+  {% if notice == "intervals_saved" %}<p class="notice">{{ t.intervals_saved }}</p>{% endif %}
 
   <div class="card">
     <p>{{ t.account_label }}: <strong>{{ user.email }}</strong></p>
     <p class="lead">{{ t.settings_pending }}</p>
+  </div>
+
+  <div class="card">
+    <h2>{{ t.intervals_title }}
+      {% if intervals_connected %}
+        <span class="pill ok">{{ t.intervals_status_on }}</span>
+      {% else %}
+        <span class="pill off">{{ t.intervals_status_off }}</span>
+      {% endif %}
+    </h2>
+    {% if intervals_connected %}
+      <p class="notice">{% if intervals_name %}{{ t.intervals_key_stored_as.format(name=intervals_name) }}{% else %}{{ t.intervals_key_stored }}{% endif %}</p>
+    {% endif %}
+    {% if lang == "en" %}
+      <p>The key is on <a href="https://intervals.icu/settings" rel="noopener" target="_blank">intervals.icu/settings</a>. Scroll to the bottom, open <strong>Developer settings</strong>, and copy <strong>API key</strong> (in Czech: <em>Nastavení vývojáře</em> → <em>Klíč API</em>).</p>
+      <p>How-to: <a href="https://forum.intervals.icu/t/api-access-to-intervals-icu/609" rel="noopener" target="_blank">API access to Intervals.icu</a>. First link Zepp to Intervals.icu under 3rd-party account linking, or watch activities will not appear here.</p>
+    {% else %}
+      <p>Klíč je na <a href="https://intervals.icu/settings" rel="noopener" target="_blank">intervals.icu/settings</a>. Sjeďte dolů na <strong>Nastavení vývojáře</strong> a zkopírujte <strong>Klíč API</strong>.</p>
+      <p>Nápověda: <a href="https://forum.intervals.icu/t/api-access-to-intervals-icu/609" rel="noopener" target="_blank">API access to Intervals.icu</a>. Nejdřív v Zeppu zapněte napojení na Intervals.icu (3rd-party account linking), jinak tu nebudou aktivity z hodinek.</p>
+    {% endif %}
+    <form method="post" action="/settings/intervals">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="api_key">{% if intervals_connected %}{{ t.intervals_key_new }}{% else %}{{ t.intervals_key }}{% endif %}</label>
+      <input id="api_key" name="api_key" type="password" autocomplete="off" spellcheck="false"{% if intervals_connected %} placeholder="{{ t.intervals_placeholder }}"{% endif %}>
+      {% if intervals_connected %}<p class="note">{{ t.intervals_replace_hint }}</p>{% endif %}
+      <button type="submit">{% if intervals_connected %}{{ t.intervals_replace }}{% else %}{{ t.intervals_save }}{% endif %}</button>
+    </form>
+    {% if intervals_connected %}
+      <form method="post" action="/settings/intervals/disconnect">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="ghost" type="submit">{{ t.intervals_disconnect }}</button>
+      </form>
+    {% endif %}
   </div>
 
   <div class="card">

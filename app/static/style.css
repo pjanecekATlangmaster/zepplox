@@ -74,9 +74,14 @@ p.lead { color: var(--muted); margin: 0 0 24px; }
 }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .pill {
+  display: inline-block;
   border: 1px solid var(--line);
-  padding: 6px 10px;
-  font-size: 0.85rem;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  margin-left: 8px;
 }
 .pill.ok { border-color: var(--ok); color: var(--ok); }
 .pill.off { color: var(--muted); }
@@ -120,6 +125,7 @@ label.check {
 label.check input { margin-top: 3px; }
 .error { color: var(--danger); margin: 12px 0; }
 .notice { color: var(--ok); margin: 0 0 16px; }
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }

@@ -14,7 +14,49 @@
     </nav>
   </div>
 
-  <div class="card">
-    <p>{{ t.overview_ok }}</p>
-  </div>
+  {% if not intervals_connected %}
+    <div class="card">
+      <p>{{ t.overview_ok }}</p>
+      <p><a class="button" href="/settings">{{ t.intervals_title }}</a></p>
+    </div>
+  {% else %}
+    <div class="card">
+      <h2>{{ t.activities_title }}</h2>
+      <p>{{ t.intervals_connected.format(name=intervals_name) }}</p>
+      <p class="note">{{ t.activities_lead.format(days=preview_days) }}</p>
+      {% if fetch_error %}
+        <p class="error">{{ fetch_error }}</p>
+      {% elif activities %}
+        <p class="notice">{{ t.activities_count.format(count=activities|length) }}</p>
+        <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t.col_when }}</th>
+              <th>{{ t.col_name }}</th>
+              <th>{{ t.col_sport }}</th>
+              <th>{{ t.col_distance }}</th>
+              <th>{{ t.col_time }}</th>
+              <th>{{ t.col_gps }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in activities %}
+              <tr>
+                <td>{{ item.start }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.sport }}</td>
+                <td>{% if item.distance_km %}{{ t.km_unit.format(value=item.distance_km) }}{% else %}—{% endif %}</td>
+                <td>{% if item.duration_min %}{{ t.min_unit.format(value=item.duration_min) }}{% else %}—{% endif %}</td>
+                <td>{% if item.has_gps %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p>{{ t.activities_empty.format(days=preview_days) }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
 {% endblock %}

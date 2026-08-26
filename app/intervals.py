@@ -5,15 +5,46 @@ from datetime import date
 import httpx
 
 BASE = "https://intervals.icu/api/v1"
+PREVIEW_DAYS = 30
+
+
+class IntervalsAuthError(Exception):
+    """API key was rejected (401/403)."""
 
 
 def _client(api_key: str) -> httpx.Client:
     return httpx.Client(
         base_url=BASE,
-        auth=("API_KEY", api_key),
+        auth=("API_KEY", api_key.strip()),
         timeout=45.0,
         headers={"Accept": "application/json"},
+        follow_redirects=True,
     )
+
+
+def _check(response: httpx.Response) -> None:
+    if response.status_code in {401, 403}:
+        raise IntervalsAuthError("Intervals.icu rejected the API key.")
+    response.raise_for_status()
+
+
+def get_athlete(api_key: str) -> dict:
+    with _client(api_key) as client:
+        response = client.get("/athlete/0")
+        _check(response)
+        data = response.json()
+        if isinstance(data, dict) and "id" not in data and isinstance(data.get("athlete"), dict):
+            data = data["athlete"]
+        return data if isinstance(data, dict) else {}
+
+
+def athlete_display_name(athlete: dict) -> str:
+    name = str(athlete.get("name") or "").strip()
+    if name:
+        return name[:200]
+    parts = [str(athlete.get("firstname") or "").strip(), str(athlete.get("lastname") or "").strip()]
+    joined = " ".join(part for part in parts if part)
+    return (joined or str(athlete.get("id") or "Intervals.icu"))[:200]
 
 
 def list_activities(api_key: str, oldest: date, newest: date) -> list[dict]:
@@ -22,7 +53,7 @@ def list_activities(api_key: str, oldest: date, newest: date) -> list[dict]:
             "/athlete/0/activities",
             params={"oldest": oldest.isoformat(), "newest": newest.isoformat()},
         )
-        response.raise_for_status()
+        _check(response)
         data = response.json()
         return data if isinstance(data, list) else []
 
@@ -41,3 +72,18 @@ def activity_has_gps(activity: dict) -> bool:
         return True
     start = activity.get("icu_start_latlng") or activity.get("start_latlng")
     return bool(start)
+
+
+def summarize_activity(activity: dict) -> dict[str, object]:
+    distance_m = float(activity.get("distance") or 0)
+    duration = int(activity.get("moving_time") or activity.get("elapsed_time") or 0)
+    start = str(activity.get("start_date_local") or activity.get("start_date") or "")
+    return {
+        "id": str(activity.get("id") or ""),
+        "name": str(activity.get("name") or activity.get("id") or ""),
+        "sport": str(activity.get("type") or ""),
+        "start": start.replace("T", " ")[:16],
+        "distance_km": round(distance_m / 1000, 2) if distance_m else 0,
+        "duration_min": duration // 60,
+        "has_gps": activity_has_gps(activity),
+    }

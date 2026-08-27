@@ -54,6 +54,7 @@ from app.livelox import (
 )
 from app.mail import send_otp_email
 from app.models import User
+from app.stats import collect_admin_stats
 from app.sync import (
     MANUAL_LIMIT,
     SPORT_CHOICES,
@@ -61,9 +62,11 @@ from app.sync import (
     import_selected,
     latest_imports,
     mark_next_sync,
+    next_user_sync_at,
     parse_sports,
     run_sync,
     schedule_state,
+    user_is_due,
 )
 
 log = logging.getLogger("zepplox")
@@ -76,19 +79,22 @@ templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 async def _scheduled_sync_loop(minutes: int) -> None:
     first_wait = min(120, max(minutes, 1) * 60)
-    interval = max(minutes, 1) * 60
+    tick = 60
     mark_next_sync(utcnow() + timedelta(seconds=first_wait))
-    log.info("Scheduled sync every %s min; first run in %s s", minutes, first_wait)
+    log.info(
+        "Scheduled sync every %s min in per-user slots; first tick in %s s, then every %s s",
+        minutes, first_wait, tick,
+    )
     try:
         await asyncio.sleep(first_wait)
         while True:
             mark_next_sync(None, running=True)
             try:
-                await asyncio.to_thread(run_sync)
+                await asyncio.to_thread(run_sync, due_only=True)
             except Exception:
                 log.exception("Scheduled sync failed")
-            mark_next_sync(utcnow() + timedelta(seconds=interval))
-            await asyncio.sleep(interval)
+            mark_next_sync(utcnow() + timedelta(seconds=tick))
+            await asyncio.sleep(tick)
     except asyncio.CancelledError:
         mark_next_sync(None)
         log.info("Scheduled sync stopped")
@@ -155,6 +161,12 @@ def require_user(user: User | None = Depends(current_user)) -> User:
     return user
 
 
+def require_admin(user: User = Depends(require_user)) -> User:
+    if user.email.lower() not in settings.admin_email_set:
+        raise HTTPException(status_code=404)
+    return user
+
+
 def request_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
@@ -166,6 +178,12 @@ def request_ip(request: Request) -> str:
 
 def _ctx(request: Request, **extra):
     lang = extra.pop("lang", None) or resolve_lang(request)
+    user = extra.get("user")
+    is_admin = bool(
+        user is not None
+        and getattr(user, "email", None)
+        and user.email.lower() in settings.admin_email_set
+    )
     return {
         "request": request,
         "app_name": settings.app_name,
@@ -173,6 +191,7 @@ def _ctx(request: Request, **extra):
         "csrf": _csrf(request),
         "lang": lang,
         "t": strings_for(lang),
+        "is_admin": is_admin,
         **extra,
     }
 
@@ -194,15 +213,15 @@ def _format_sync_when(when: datetime, lang: str) -> str:
     return when.strftime("%d %b %Y %H:%M UTC")
 
 
-def _sync_schedule_message(lang: str, user_enabled: bool) -> str:
+def _sync_schedule_message(lang: str, user_enabled: bool, user_id: int = 0) -> str:
     t = strings_for(lang)
     state = schedule_state()
     minutes = int(state["interval_minutes"] or 0)
     if not state["host_enabled"]:
         return t["sync_host_off"]
-    if state["running"]:
+    if state["running"] and user_id and user_is_due(user_id, minutes):
         return t["sync_running"].format(minutes=minutes)
-    when = state["next_at"]
+    when = next_user_sync_at(user_id, minutes) if user_id else state["next_at"]
     when_label = _format_sync_when(when, lang) if isinstance(when, datetime) else t["sync_when_unknown"]
     if not user_enabled:
         return t["sync_next_skipped"].format(when=when_label, minutes=minutes)
@@ -314,6 +333,7 @@ def home(
         sync_schedule=_sync_schedule_message(
             resolve_lang(request),
             user.settings is None or bool(user.settings.sync_enabled),
+            user.id,
         ),
         manual_limit=MANUAL_LIMIT,
         notice=notice,
@@ -425,6 +445,7 @@ def _settings_html(
         sync_schedule=_sync_schedule_message(
             resolve_lang(request),
             user.settings is None or bool(user.settings.sync_enabled),
+            user.id,
         ),
         intervals_name=intervals.extra if intervals else "",
         intervals_connected=intervals is not None,
@@ -437,6 +458,16 @@ def _settings_html(
         notice=notice,
         error=error,
     )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(
+    request: Request,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    stats = collect_admin_stats(db, log_days=settings.log_retention_days)
+    return _html(request, "admin.html", user=user, stats=stats)
 
 
 @app.get("/settings", response_class=HTMLResponse)

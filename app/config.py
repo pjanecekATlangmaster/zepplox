@@ -50,11 +50,13 @@ class Settings(BaseSettings):
 
     sync_lookback_hours: int = 2
     sync_interval_minutes: int = 0
+    sync_user_gap_seconds: float = 2.0
     log_retention_days: int = 7
     otp_ttl_seconds: int = 600
     otp_max_per_window: int = 3
     otp_window_seconds: int = 900
     otp_max_per_ip: int = 10
+    admin_emails: str = ""
 
     port: int = Field(default=8456, validation_alias=AliasChoices("PORT", "port"))
 
@@ -116,6 +118,10 @@ class Settings(BaseSettings):
     @property
     def livelox_configured(self) -> bool:
         return bool(self.livelox_client_id)
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {part.strip().lower() for part in self.admin_emails.split(",") if part.strip()}
 
     def require_runtime_secrets(self) -> Self:
         missing = [

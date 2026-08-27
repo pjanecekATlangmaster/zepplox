@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ t.admin }} · {{ app_name }}{% endblock %}
+{% block content %}
+  <p><a href="/">{{ t.back_overview }}</a></p>
+  <h1>{{ t.admin }}</h1>
+  <p class="lead">{{ t.admin_lead.format(days=stats.log_days) }}</p>
+
+  <div class="stats">
+    <div class="stat"><span>{{ t.admin_users }}</span><strong>{{ stats.user_count }}</strong></div>
+    <div class="stat"><span>{{ t.intervals_title }}</span><strong>{{ stats.intervals }}</strong></div>
+    <div class="stat"><span>{{ t.livelox_title }}</span><strong>{{ stats.livelox }}</strong></div>
+    <div class="stat"><span>{{ t.admin_both }}</span><strong>{{ stats.both }}</strong></div>
+    <div class="stat"><span>{{ t.admin_sync_on }}</span><strong>{{ stats.sync_on }}</strong></div>
+    <div class="stat"><span>{{ t.admin_login_week }}</span><strong>{{ stats.recent_login }}</strong></div>
+    <div class="stat"><span>{{ t.status_imported }}</span><strong>{{ stats.imported }}</strong></div>
+    <div class="stat"><span>{{ t.status_skipped }}</span><strong>{{ stats.skipped }}</strong></div>
+    <div class="stat"><span>{{ t.status_error }}</span><strong>{{ stats.errors }}</strong></div>
+  </div>
+
+  <div class="card">
+    <h2>{{ t.admin_users }}</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t.email_label }}</th>
+            <th>{{ t.intervals_title }}</th>
+            <th>{{ t.livelox_title }}</th>
+            <th>{{ t.sync_title }}</th>
+            <th>{{ t.admin_last_sync }}</th>
+            <th>{{ t.admin_last_login }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.users %}
+            <tr>
+              <td>{{ row.email }}</td>
+              <td>{% if row.intervals %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
+              <td>{% if row.livelox %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
+              <td>{% if row.sync_on %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
+              <td>{% if row.last_sync %}{{ row.last_sync.strftime("%Y-%m-%d %H:%M") }} UTC{% else %}—{% endif %}</td>
+              <td>{% if row.last_login %}{{ row.last_login.strftime("%Y-%m-%d %H:%M") }} UTC{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>{{ t.admin_runs }}</h2>
+    {% if stats.runs %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t.col_when }}</th>
+              <th>{{ t.admin_processed }}</th>
+              <th>{{ t.status_imported }}</th>
+              <th>{{ t.status_skipped }}</th>
+              <th>{{ t.status_error }}</th>
+              <th>{{ t.admin_note }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in stats.runs %}
+              <tr>
+                <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M") }} UTC</td>
+                <td>{{ run.users_processed }}</td>
+                <td>{{ run.imported_count }}</td>
+                <td>{{ run.skipped_count }}</td>
+                <td>{{ run.error_count }}</td>
+                <td class="status">{{ run.note }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="note">{{ t.admin_runs_empty }}</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>{{ t.admin_recent_errors }}</h2>
+    {% if stats.error_rows %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t.col_when }}</th>
+              <th>{{ t.email_label }}</th>
+              <th>{{ t.col_name }}</th>
+              <th>{{ t.col_status }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stats.error_rows %}
+              <tr>
+                <td>{{ row.when.strftime("%Y-%m-%d %H:%M") }} UTC</td>
+                <td>{{ row.email }}</td>
+                <td>{{ row.title or "—" }}</td>
+                <td><div class="status">{{ row.message }}</div></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="note">{{ t.admin_errors_empty }}</p>
+    {% endif %}
+  </div>
+{% endblock %}

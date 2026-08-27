@@ -3,7 +3,8 @@ from __future__ import annotations
 import gzip
 import logging
 import threading
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -45,6 +46,31 @@ def schedule_state() -> dict[str, object]:
         "next_at": _next_sync_at,
         "running": _sync_in_progress,
     }
+
+
+def sync_slot(user_id: int, interval_minutes: int) -> int:
+    return int(user_id) % max(int(interval_minutes), 1)
+
+
+def utc_minute(now: datetime | None = None) -> int:
+    moment = now or utcnow()
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int(moment.timestamp() // 60)
+
+
+def user_is_due(user_id: int, interval_minutes: int, now: datetime | None = None) -> bool:
+    interval = max(int(interval_minutes), 1)
+    return (utc_minute(now) % interval) == sync_slot(user_id, interval)
+
+
+def next_user_sync_at(user_id: int, interval_minutes: int, now: datetime | None = None) -> datetime:
+    interval = max(int(interval_minutes), 1)
+    slot = sync_slot(user_id, interval)
+    minute = utc_minute(now)
+    wait = (slot - (minute % interval)) % interval
+    floored = datetime.fromtimestamp(minute * 60, tz=timezone.utc).replace(tzinfo=None)
+    return floored + timedelta(minutes=wait)
 
 SPORT_CHOICES = [
     "Run",
@@ -358,7 +384,7 @@ def import_selected(
     return imported, skipped, errors
 
 
-def run_sync() -> None:
+def run_sync(*, due_only: bool = True) -> None:
     if not _sync_lock.acquire(blocking=False):
         log.warning("sync already running, skip")
         return
@@ -367,6 +393,9 @@ def run_sync() -> None:
         settings = get_settings().require_runtime_secrets()
         init_db()
         run = SyncRun()
+        gap = max(float(settings.sync_user_gap_seconds), 0.0)
+        interval = max(int(settings.sync_interval_minutes), 0)
+        now = utcnow()
         with session_scope() as db:
             db.add(run)
             db.flush()
@@ -374,9 +403,15 @@ def run_sync() -> None:
             users = list(db.scalars(select(User).options(selectinload(User.settings))).all())
             imported = skipped = errors = 0
             processed = 0
+            first = True
             for user in users:
                 if user.settings is None:
                     continue
+                if due_only and interval > 0 and not user_is_due(user.id, interval, now):
+                    continue
+                if not first and gap:
+                    time.sleep(gap)
+                first = False
                 processed += 1
                 i, s, e = sync_user(db, settings, user)
                 imported += i
@@ -387,14 +422,18 @@ def run_sync() -> None:
             run.skipped_count = skipped
             run.error_count = errors
             run.finished_at = utcnow()
-            run.note = f"zkontrolováno {processed} uživatelů"
+            run.note = (
+                f"slot {utc_minute(now) % interval}/{interval}, {processed} uživatelů"
+                if due_only and interval > 0
+                else f"zkontrolováno {processed} uživatelů"
+            )
             log.info(
-                "sync finished users=%s imported=%s skipped=%s errors=%s",
-                processed, imported, skipped, errors,
+                "sync finished users=%s imported=%s skipped=%s errors=%s note=%s",
+                processed, imported, skipped, errors, run.note,
             )
     finally:
         _sync_lock.release()
 
 
 if __name__ == "__main__":
-    run_sync()
+    run_sync(due_only=False)

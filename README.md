@@ -43,9 +43,11 @@ Configuration is **only** environment variables. Nothing in this repository is a
 | `OTP_MAX_PER_IP` | Max OTP e-mails per client IP per window (default 10) |
 | `LIVELOX_CLIENT_ID` | From [info@livelox.com](mailto:info@livelox.com); user-delegated access, scope `routes.import` |
 | `LIVELOX_REDIRECT_URI` | Optional; defaults to `{APP_BASE_URL}/oauth/livelox/callback` |
-| `SYNC_INTERVAL_MINUTES` | Automatic poll interval. `0` = off. The Docker image defaults to **30** |
+| `SYNC_INTERVAL_MINUTES` | Automatic poll interval. `0` = off. The Docker image defaults to **30**. Users are spread across that interval (one slot per minute) so Intervals/Livelox are not hit at once |
+| `SYNC_USER_GAP_SECONDS` | Pause between two users who share the same slot (default 2) |
 | `SYNC_LOOKBACK_HOURS` | How far back each poll looks |
 | `LOG_RETENTION_DAYS` | Sync log retention (default 7) |
+| `ADMIN_EMAILS` | Comma-separated e-mails that can open `/admin` (counts, sync runs, recent errors). Empty = no admin page |
 
 Generate keys on a trusted machine and paste each output into `.env`. Do not swap them.
 
@@ -123,7 +125,7 @@ cd /volume1/docker/zepplox
 
 That pulls `:latest` and starts (or recreates) the container. If DSM cannot resolve names (`temporary failure in name resolution`), compose already sets DNS `8.8.8.8` / `1.1.1.1`.
 
-The image runs automatic sync every **30 minutes** unless you set `SYNC_INTERVAL_MINUTES` (use `0` to turn the scheduler off). Users who turned sync off in Settings are skipped. After a container start the first run is about two minutes later. Local `uvicorn` does not schedule sync unless you set the variable.
+The image spreads automatic sync across the **30 minute** interval (`SYNC_INTERVAL_MINUTES`): each account has a minute slot so Intervals.icu and Livelox are not all called at once. The first tick is about two minutes after start, then every minute for whoever is due. Set the variable to `0` to turn the scheduler off. Users who turned sync off in Settings are skipped. Local `uvicorn` does not schedule sync unless you set the variable. `docker exec zepplox python -m app.sync` still processes every user immediately.
 
 ```bash
 sudo docker logs zepplox

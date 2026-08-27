@@ -30,7 +30,10 @@ header strong { font-size: 1.15rem; letter-spacing: 0.02em; }
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 16px;
 }
+.admin-link { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 650; }
+.admin-link:hover { color: var(--ink); }
 .lang { font-size: 0.85rem; }
 .lang a { color: var(--accent); text-decoration: none; font-weight: 650; }
 .lang a:hover { text-decoration: underline; }
@@ -128,5 +131,18 @@ th { color: var(--muted); font-weight: 600; }
 .sports label { margin: 0; }
 th.check, td.check { width: 3.2rem; text-align: center; }
 .status { color: var(--muted); font-size: 0.8rem; margin-top: 4px; max-width: 16rem; }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 14px 16px;
+}
+.stat span { display: block; color: var(--muted); font-size: 0.8rem; margin-bottom: 6px; }
+.stat strong { font-size: 1.45rem; font-weight: 650; }
 nav form { display: inline; }
 footer { color: var(--muted); font-size: 0.8rem; padding-bottom: 32px; }

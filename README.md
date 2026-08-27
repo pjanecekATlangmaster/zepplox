@@ -31,8 +31,8 @@ Configuration is **only** environment variables. Nothing in this repository is a
 |---|---|
 | `APP_BASE_URL` | Public HTTPS origin, no trailing slash |
 | `PORT` | Listen port (default **8456**) |
-| `APP_ENCRYPTION_KEY` | Fernet key; encrypts Intervals keys and Livelox tokens at rest |
-| `SESSION_SECRET` | Signs the login cookie |
+| `APP_ENCRYPTION_KEY` | Fernet key; encrypts Intervals keys and Livelox tokens at rest. Generate with the first command below. |
+| `SESSION_SECRET` | Signs the login cookie. Generate with the second command below. |
 | `DB_*` | Existing MariaDB (empty database; tables are created at startup) |
 | `SMTP_HOST` / `SMTP_PORT` | Mail server |
 | `SMTP_ENCRYPTION` | `starttls` (default), `ssl` (port 465), or `none` |
@@ -47,14 +47,21 @@ Configuration is **only** environment variables. Nothing in this repository is a
 | `SYNC_LOOKBACK_HOURS` | How far back each poll looks |
 | `LOG_RETENTION_DAYS` | Sync log retention (default 7) |
 
-Generate keys on a trusted machine:
+Generate keys on a trusted machine and paste each output into `.env`. Do not swap them.
+
+**`APP_ENCRYPTION_KEY`** (Fernet; encrypts stored Intervals and Livelox secrets):
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+**`SESSION_SECRET`** (signs the login cookie; any long random string is fine):
+
+```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Back up `APP_ENCRYPTION_KEY` separately from the database dump. Without it, stored tokens cannot be decrypted.
+Back up `APP_ENCRYPTION_KEY` separately from the database dump. Without it, stored tokens cannot be decrypted. Changing `SESSION_SECRET` only signs everyone out.
 
 ## Run locally (Windows)
 

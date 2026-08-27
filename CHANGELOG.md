@@ -7,6 +7,8 @@ ZeppLox is deployed from `main` as `ghcr.io/pjanecekatlangmaster/zepplox:latest`
 
 ## [Unreleased]
 
+- README labels which command generates `APP_ENCRYPTION_KEY` vs `SESSION_SECRET`.
+
 ## [2026-08-26]
 
 ### Added

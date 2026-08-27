@@ -38,6 +38,7 @@
       <p>{{ t.overview_ok }}</p>
       <p><a class="button" href="/settings">{{ t.settings }}</a></p>
     {% endif %}
+    <p class="note">{{ sync_schedule }}</p>
   </div>
 
   {% if error %}<p class="error">{{ error }}</p>{% endif %}

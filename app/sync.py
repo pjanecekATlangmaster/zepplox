@@ -3,8 +3,7 @@ from __future__ import annotations
 import gzip
 import logging
 import threading
-import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -13,11 +12,39 @@ from app.accounts import connection_for, livelox_tokens, read_connection_secret,
 from app.config import Settings, get_settings
 from app.db import init_db, session_scope
 from app.intervals import activity_has_gps, download_fit, list_activities
-from app.livelox import dump_tokens, import_route, import_status, refresh_access_token, tokens_need_refresh
+from app.livelox import (
+    dump_tokens,
+    event_label,
+    import_route,
+    livelox_http_message,
+    lookup_existing_route,
+    poll_import,
+    refresh_access_token,
+    route_id_for,
+    tokens_need_refresh,
+)
 from app.models import ImportLog, SyncRun, User, UserSettings
 
 log = logging.getLogger("zepplox.sync")
 _sync_lock = threading.Lock()
+_next_sync_at: datetime | None = None
+_sync_in_progress = False
+
+
+def mark_next_sync(when: datetime | None, *, running: bool = False) -> None:
+    global _next_sync_at, _sync_in_progress
+    _next_sync_at = when
+    _sync_in_progress = running
+
+
+def schedule_state() -> dict[str, object]:
+    minutes = get_settings().sync_interval_minutes
+    return {
+        "interval_minutes": minutes,
+        "host_enabled": minutes > 0,
+        "next_at": _next_sync_at,
+        "running": _sync_in_progress,
+    }
 
 SPORT_CHOICES = [
     "Run",
@@ -73,6 +100,7 @@ def _log_row(
     status: str,
     message: str = "",
     event: str = "",
+    route_id: str = "",
 ) -> None:
     db.add(
         ImportLog(
@@ -83,6 +111,7 @@ def _log_row(
             status=status,
             message=message[:500],
             livelox_event=event[:300],
+            livelox_route_id=route_id[:48],
         )
     )
 
@@ -147,9 +176,7 @@ def import_one_activity(
     activity_id, title, sport, duration = _activity_fields(activity)
     if not activity_id:
         return "skipped"
-    previous = _previous_import(db, user.id, activity_id) if skip_if_done else None
-    if previous is not None and previous.status == "imported":
-        return "done"
+    previous = _previous_import(db, user.id, activity_id)
     skip_message = ""
     if not ignore_filters and prefs is not None:
         if sport not in _sports(prefs):
@@ -189,34 +216,45 @@ def import_one_activity(
         return "error"
 
     try:
+        stored_id = previous.livelox_route_id if previous is not None else ""
+        existing = lookup_existing_route(
+            access,
+            [stored_id, route_id_for(activity_id)],
+        )
+        if existing is not None:
+            route_id, meta = existing
+            if skip_if_done:
+                return "done"
+            _log_row(
+                db, user.id, activity_id=activity_id, title=title, sport=sport,
+                status="imported",
+                message="Už je v Liveloxu, znovu se neposílá",
+                event=event_label(meta),
+                route_id=route_id,
+            )
+            return "imported"
+
         fit = _as_fit(download_fit(api_key, activity_id))
-        posted = import_route(access, f"zepplox-{activity_id}"[:48], fit)
-        route_id = str(posted.get("id") or f"zepplox-{activity_id}")
-        event_name = ""
-        final_status = "pending"
-        for _ in range(8):
-            time.sleep(2)
-            meta = import_status(access, route_id)
-            final_status = str(meta.get("status") or "pending")
-            if final_status == "imported":
-                event_name = " / ".join(
-                    part
-                    for part in (meta.get("eventName"), meta.get("className"), meta.get("viewerUrl"))
-                    if part
-                )
-                break
-            if final_status == "error":
-                raise RuntimeError(meta.get("errorMessage") or "Livelox import error")
+        route_id = route_id_for(activity_id, fresh=True)
+        posted = import_route(access, route_id, fit)
+        route_id = str(posted.get("id") or route_id)
+        meta = poll_import(access, route_id)
+        final_status = str(meta.get("status") or "pending")
+        if meta.get("not_found"):
+            raise RuntimeError("Livelox trasu po odeslání nenašel")
+        if final_status == "error":
+            raise RuntimeError(meta.get("errorMessage") or "Livelox import error")
+        event_name = event_label(meta) if final_status == "imported" else ""
         message = "Importováno" if final_status == "imported" else "Odesláno, Livelox ještě zpracovává"
         _log_row(
             db, user.id, activity_id=activity_id, title=title, sport=sport,
-            status="imported", message=message, event=event_name,
+            status="imported", message=message, event=event_name, route_id=route_id,
         )
         return "imported"
     except Exception as exc:
         _log_row(
             db, user.id, activity_id=activity_id, title=title, sport=sport,
-            status="error", message=str(exc),
+            status="error", message=livelox_http_message(exc),
         )
         return "error"
 

@@ -86,6 +86,7 @@
     <h2>{{ t.sync_title }}</h2>
     {% if sync_enabled %}
       <p>{{ t.sync_on }}</p>
+      <p class="note">{{ sync_schedule }}</p>
       <form method="post" action="/settings/sync">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="enabled" value="0">
@@ -93,6 +94,7 @@
       </form>
     {% else %}
       <p>{{ t.sync_off }}</p>
+      <p class="note">{{ sync_schedule }}</p>
       <form method="post" action="/settings/sync">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="hidden" name="enabled" value="1">

@@ -41,6 +41,10 @@ def init_db() -> None:
     if "client_ip" not in columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE otp_challenges ADD COLUMN client_ip VARCHAR(64) NOT NULL DEFAULT ''"))
+    log_columns = {column["name"] for column in inspect(engine).get_columns("import_logs")}
+    if "livelox_route_id" not in log_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE import_logs ADD COLUMN livelox_route_id VARCHAR(48) NOT NULL DEFAULT ''"))
 
 
 @contextmanager

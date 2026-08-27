@@ -76,33 +76,61 @@ Or `start.bat`. Then open [http://127.0.0.1:8456](http://127.0.0.1:8456). `.env`
 
 OTP sending is limited to 3 codes per e-mail and 10 per IP in 15 minutes.
 
-## Synology NAS
+## Synology NAS (SSH)
 
-Same path as the Livelox map exporter: **do not build on DSM**. GitHub Actions publishes `ghcr.io/pjanecekatlangmaster/zepplox:latest`. Container Manager only pulls and starts.
+Do **not** build the image on DSM. GitHub Actions publishes `ghcr.io/pjanecekatlangmaster/zepplox:latest`. On the NAS you only download compose files, edit `.env`, and start the container.
 
-```bash
-cp .env.example .env
-# set APP_ENCRYPTION_KEY, SESSION_SECRET, DB_*, SMTP_* on this host
-docker compose pull
-docker compose up -d
-```
+MariaDB and SMTP stay outside the container. Point HTTPS (`zepplox.kibos.link` or your hostname) at port **8456**.
 
-Point HTTPS (`zepplox.kibos.link`) at port **8456**. MariaDB and SMTP stay outside the container (the NAS MariaDB you already created).
+### 1. Download
 
-If DSM cannot resolve names (`temporary failure in name resolution`), compose already sets DNS `8.8.8.8` / `1.1.1.1`. Log into registry `ghcr.io` in Container Manager with a GitHub token that has `read:packages` (and `repo` if the package is private), same as for Livelox.
-
-The image runs automatic sync every **30 minutes** (`SYNC_INTERVAL_MINUTES`). Set that variable to `0` to disable it. Users who turned sync off in Settings are skipped. Local `uvicorn` does not schedule sync unless you set the variable.
+SSH into the NAS and create a folder (example: `/volume1/docker/zepplox`):
 
 ```bash
-docker logs zepplox
-docker exec zepplox python -m app.sync
+ssh you@nas
+sudo mkdir -p /volume1/docker/zepplox
+cd /volume1/docker/zepplox
 ```
 
-`pull-up.sh` on the NAS pulls `:latest`, recreates the container, then `docker image prune -f` so the previous untagged image does not stay on disk. To clean leftovers already there, run the same prune once:
+Download the three files from `main` (not the Python app — that is inside the image):
 
 ```bash
-sudo docker image prune -f
+sudo curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/pjanecekATlangmaster/zepplox/main/docker-compose.yml
+sudo curl -fsSL -o .env.example https://raw.githubusercontent.com/pjanecekATlangmaster/zepplox/main/.env.example
+sudo curl -fsSL -o pull-up.sh https://raw.githubusercontent.com/pjanecekATlangmaster/zepplox/main/pull-up.sh
+sudo chmod +x pull-up.sh
 ```
+
+If `docker compose pull` later returns 401, log into `ghcr.io` with a GitHub token that has `read:packages` (and `repo` if the package is private).
+
+### 2. Edit `.env`
+
+Secrets stay on this host. Never commit `.env`.
+
+```bash
+sudo cp .env.example .env
+sudo nano .env
+```
+
+Set at least `APP_BASE_URL`, `APP_ENCRYPTION_KEY`, `SESSION_SECRET`, `DB_*`, `SMTP_*`, and `LIVELOX_CLIENT_ID`. Generate the two keys with the commands in [Configuration](#configuration). Leave `SYNC_INTERVAL_MINUTES` unset to use the image default of **30**.
+
+### 3. Start
+
+```bash
+cd /volume1/docker/zepplox
+./pull-up.sh
+```
+
+That pulls `:latest` and starts (or recreates) the container. If DSM cannot resolve names (`temporary failure in name resolution`), compose already sets DNS `8.8.8.8` / `1.1.1.1`.
+
+The image runs automatic sync every **30 minutes** unless you set `SYNC_INTERVAL_MINUTES` (use `0` to turn the scheduler off). Users who turned sync off in Settings are skipped. After a container start the first run is about two minutes later. Local `uvicorn` does not schedule sync unless you set the variable.
+
+```bash
+sudo docker logs zepplox
+sudo docker exec zepplox python -m app.sync
+```
+
+Later updates: download the three files again if they changed on GitHub, then run `./pull-up.sh`. After changing `.env`, run `./pull-up.sh` so the container picks up the new values.
 
 ## Data stored
 

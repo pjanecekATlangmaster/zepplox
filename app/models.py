@@ -73,6 +73,7 @@ class ImportLog(Base):
     status: Mapped[str] = mapped_column(String(32))
     message: Mapped[str] = mapped_column(String(500), default="")
     livelox_event: Mapped[str] = mapped_column(String(300), default="")
+    livelox_route_id: Mapped[str] = mapped_column(String(48), default="")
 
 
 class SyncRun(Base):

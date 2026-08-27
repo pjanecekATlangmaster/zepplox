@@ -4,7 +4,7 @@ import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -54,7 +54,17 @@ from app.livelox import (
 )
 from app.mail import send_otp_email
 from app.models import User
-from app.sync import MANUAL_LIMIT, SPORT_CHOICES, dump_sports, import_selected, latest_imports, parse_sports, run_sync
+from app.sync import (
+    MANUAL_LIMIT,
+    SPORT_CHOICES,
+    dump_sports,
+    import_selected,
+    latest_imports,
+    mark_next_sync,
+    parse_sports,
+    run_sync,
+    schedule_state,
+)
 
 log = logging.getLogger("zepplox")
 
@@ -66,16 +76,21 @@ templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 async def _scheduled_sync_loop(minutes: int) -> None:
     first_wait = min(120, max(minutes, 1) * 60)
+    interval = max(minutes, 1) * 60
+    mark_next_sync(utcnow() + timedelta(seconds=first_wait))
     log.info("Scheduled sync every %s min; first run in %s s", minutes, first_wait)
     try:
         await asyncio.sleep(first_wait)
         while True:
+            mark_next_sync(None, running=True)
             try:
                 await asyncio.to_thread(run_sync)
             except Exception:
                 log.exception("Scheduled sync failed")
-            await asyncio.sleep(max(minutes, 1) * 60)
+            mark_next_sync(utcnow() + timedelta(seconds=interval))
+            await asyncio.sleep(interval)
     except asyncio.CancelledError:
+        mark_next_sync(None)
         log.info("Scheduled sync stopped")
         raise
 
@@ -169,6 +184,29 @@ def _sport_choices(t: dict[str, str]) -> list[tuple[str, str]]:
 def _selected_sports(user: User) -> set[str]:
     raw = user.settings.sports if user.settings is not None else DEFAULT_SPORTS
     return parse_sports(raw) & set(SPORT_CHOICES)
+
+
+def _format_sync_when(when: datetime, lang: str) -> str:
+    if when.tzinfo is not None:
+        when = when.astimezone(timezone.utc).replace(tzinfo=None)
+    if lang == "cs":
+        return f"{when.day}. {when.month}. {when.year} {when.hour:02d}:{when.minute:02d} UTC"
+    return when.strftime("%d %b %Y %H:%M UTC")
+
+
+def _sync_schedule_message(lang: str, user_enabled: bool) -> str:
+    t = strings_for(lang)
+    state = schedule_state()
+    minutes = int(state["interval_minutes"] or 0)
+    if not state["host_enabled"]:
+        return t["sync_host_off"]
+    if state["running"]:
+        return t["sync_running"].format(minutes=minutes)
+    when = state["next_at"]
+    when_label = _format_sync_when(when, lang) if isinstance(when, datetime) else t["sync_when_unknown"]
+    if not user_enabled:
+        return t["sync_next_skipped"].format(when=when_label, minutes=minutes)
+    return t["sync_next"].format(when=when_label, minutes=minutes)
 
 
 def _attach_import_status(db: Session, user_id: int, activities: list[dict]) -> None:
@@ -273,6 +311,10 @@ def home(
         preview_days=PREVIEW_DAYS,
         can_send=livelox is not None,
         sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+        sync_schedule=_sync_schedule_message(
+            resolve_lang(request),
+            user.settings is None or bool(user.settings.sync_enabled),
+        ),
         manual_limit=MANUAL_LIMIT,
         notice=notice,
         error=error,
@@ -380,6 +422,10 @@ def _settings_html(
         status_code=status_code,
         user=user,
         sync_enabled=user.settings is None or bool(user.settings.sync_enabled),
+        sync_schedule=_sync_schedule_message(
+            resolve_lang(request),
+            user.settings is None or bool(user.settings.sync_enabled),
+        ),
         intervals_name=intervals.extra if intervals else "",
         intervals_connected=intervals is not None,
         livelox_name=(livelox.extra if livelox else "") or "Livelox",

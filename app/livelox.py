@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import secrets
+import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -136,7 +137,10 @@ def import_route(access_token: str, route_id: str, file_bytes: bytes) -> dict:
     response.raise_for_status()
     if not response.content:
         return {"id": route_id}
-    return response.json()
+    posted = response.json()
+    if not isinstance(posted, dict):
+        return {"id": route_id}
+    return posted
 
 
 def import_status(access_token: str, route_id: str) -> dict:
@@ -145,8 +149,65 @@ def import_status(access_token: str, route_id: str) -> dict:
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=30.0,
     )
+    if response.status_code == 404:
+        return {"status": "pending", "not_found": True}
     response.raise_for_status()
-    return response.json()
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {"status": "pending"}
+
+
+def route_id_for(activity_id: str, *, fresh: bool = False) -> str:
+    if fresh:
+        return f"zepplox-{activity_id}-{secrets.token_hex(3)}"[:48]
+    return f"zepplox-{activity_id}"[:48]
+
+
+def lookup_existing_route(access_token: str, route_ids: list[str]) -> tuple[str, dict] | None:
+    seen: set[str] = set()
+    for route_id in route_ids:
+        rid = str(route_id or "").strip()[:48]
+        if not rid or rid in seen:
+            continue
+        seen.add(rid)
+        meta = import_status(access_token, rid)
+        if meta.get("not_found"):
+            continue
+        status = str(meta.get("status") or "")
+        if status in {"imported", "pending"}:
+            return rid, meta
+    return None
+
+
+def event_label(meta: dict) -> str:
+    return " / ".join(
+        part
+        for part in (meta.get("eventName"), meta.get("className"), meta.get("viewerUrl"))
+        if part
+    )
+
+
+def poll_import(access_token: str, route_id: str, rounds: int = 8) -> dict:
+    last: dict = {"status": "pending", "not_found": True}
+    for _ in range(rounds):
+        time.sleep(2)
+        last = import_status(access_token, route_id)
+        status = str(last.get("status") or "pending")
+        if status == "imported":
+            return last
+        if status == "error":
+            raise RuntimeError(str(last.get("errorMessage") or "Livelox import error"))
+    return last
+
+
+def livelox_http_message(exc: BaseException) -> str:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        code = exc.response.status_code
+        if code == 404:
+            return "Livelox trasu nenašel (404). Po smazání v Liveloxu ji odešlete znovu."
+        if code in {401, 403}:
+            return "Livelox odmítl přístup. Znovu propojte Livelox v nastavení."
+        return f"Livelox HTTP {code}"
+    return str(exc)[:500]
 
 
 def revoke_token(settings: Settings, token: str) -> None:

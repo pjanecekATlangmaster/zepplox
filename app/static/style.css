@@ -30,9 +30,9 @@ header strong { font-size: 1.15rem; letter-spacing: 0.02em; }
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 2rem;
 }
-.admin-link { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 650; }
+.admin-link { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 650; padding-right: 4px; }
 .admin-link:hover { color: var(--ink); }
 .lang { font-size: 0.85rem; }
 .lang a { color: var(--accent); text-decoration: none; font-weight: 650; }
@@ -142,7 +142,7 @@ th.check, td.check { width: 3.2rem; text-align: center; }
   border: 1px solid var(--line);
   padding: 14px 16px;
 }
-.stat span { display: block; color: var(--muted); font-size: 0.8rem; margin-bottom: 6px; }
-.stat strong { font-size: 1.45rem; font-weight: 650; }
+.stat span { display: block; color: var(--muted); font-size: 0.8rem; margin-bottom: 12px; }
+.stat strong { display: block; font-size: 1.45rem; font-weight: 650; line-height: 1.15; }
 nav form { display: inline; }
 footer { color: var(--muted); font-size: 0.8rem; padding-bottom: 32px; }

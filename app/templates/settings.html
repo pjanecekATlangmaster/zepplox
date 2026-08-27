@@ -1,12 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ t.settings }} · {{ app_name }}{% endblock %}
 {% block content %}
-  <p>
-    <a href="/">{{ t.back_overview }}</a>
-    {% if is_admin %}
-      · <a href="/admin">{{ t.admin }}</a>
-    {% endif %}
-  </p>
+  <p><a href="/">{{ t.back_overview }}</a></p>
   <h1>{{ t.settings }}</h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   {% if notice == "sync_off" %}<p class="notice">{{ t.sync_stopped }}</p>{% endif %}

@@ -73,6 +73,7 @@ log = logging.getLogger("zepplox")
 
 ROOT = Path(__file__).resolve().parent
 GITHUB_URL = "https://github.com/pjanecekATlangmaster/zepplox"
+CSS_VERSION = str(int((ROOT / "static" / "style.css").stat().st_mtime))
 settings = get_settings()
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
@@ -192,6 +193,7 @@ def _ctx(request: Request, **extra):
         "lang": lang,
         "t": strings_for(lang),
         "is_admin": is_admin,
+        "css_version": CSS_VERSION,
         **extra,
     }
 
@@ -296,7 +298,7 @@ def _html(request: Request, template: str, status_code: int = 200, **extra) -> H
     return response
 
 
-@app.get("/healthz")
+@app.api_route("/healthz", methods=["GET", "HEAD"])
 def healthz(db: Session = Depends(get_db)) -> dict[str, str]:
     db.execute(text("SELECT 1"))
     return {"status": "ok"}

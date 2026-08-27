@@ -13,6 +13,7 @@ ZeppLox is deployed from `main` as `ghcr.io/pjanecekatlangmaster/zepplox:latest`
 - Re-send to Livelox after the athlete deletes the route: GET the stored import id first. If it still exists, skip. If Livelox returns 404, upload again under a new id.
 - Admin page at `/admin` for e-mails in `ADMIN_EMAILS` (user counts, connections, sync runs, recent errors). Admins get a Správa / Admin control next to Settings.
 - Automatic sync spreads users across the interval (per-user minute slot) with a short pause between users in the same slot.
+- `pull-up.sh` health check uses GET; `/healthz` also accepts HEAD.
 
 ## [2026-08-26]
 

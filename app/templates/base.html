@@ -4,15 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ css_version }}">
 </head>
 <body>
   <header>
     <a class="brand" href="/{% if lang == 'en' %}?lang=en{% endif %}"><strong>{{ app_name }}</strong></a>
     <div class="header-right">
-      {% if is_admin %}
-        <a class="admin-link" href="/admin{% if lang == 'en' %}?lang=en{% endif %}">{{ t.admin }}</a>
-      {% endif %}
       <nav class="lang" aria-label="{{ t.lang_label }}">
         {% if lang == "cs" %}
           <a href="{{ request.url.path }}?lang=en">{{ t.lang_en }}</a>

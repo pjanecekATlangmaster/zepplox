@@ -188,6 +188,19 @@ def latest_imports(db: Session, user_id: int) -> dict[str, ImportLog]:
     return found
 
 
+def auto_skip_reason(prefs: UserSettings | None, activity: dict) -> str:
+    if prefs is None:
+        return ""
+    _activity_id, _title, sport, duration = _activity_fields(activity)
+    if sport not in _sports(prefs):
+        return "Sport není zapnutý"
+    if prefs.require_gps and not activity_has_gps(activity):
+        return "Aktivita nemá GPS"
+    if prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
+        return "Příliš krátká aktivita"
+    return ""
+
+
 def import_one_activity(
     db: Session,
     settings: Settings,
@@ -205,12 +218,7 @@ def import_one_activity(
     previous = _previous_import(db, user.id, activity_id)
     skip_message = ""
     if not ignore_filters and prefs is not None:
-        if sport not in _sports(prefs):
-            skip_message = "Sport není zapnutý"
-        elif prefs.require_gps and not activity_has_gps(activity):
-            skip_message = "Aktivita nemá GPS"
-        elif prefs.min_duration_seconds and duration < prefs.min_duration_seconds:
-            skip_message = "Příliš krátká aktivita"
+        skip_message = auto_skip_reason(prefs, activity)
         if skip_message:
             if previous is not None and previous.status == "skipped":
                 return "done"
@@ -392,13 +400,10 @@ def run_sync(*, due_only: bool = True) -> None:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
         settings = get_settings().require_runtime_secrets()
         init_db()
-        run = SyncRun()
         gap = max(float(settings.sync_user_gap_seconds), 0.0)
         interval = max(int(settings.sync_interval_minutes), 0)
         now = utcnow()
         with session_scope() as db:
-            db.add(run)
-            db.flush()
             purge_old_logs(db, settings)
             users = list(db.scalars(select(User).options(selectinload(User.settings))).all())
             imported = skipped = errors = 0
@@ -417,6 +422,16 @@ def run_sync(*, due_only: bool = True) -> None:
                 imported += i
                 skipped += s
                 errors += e
+            if due_only and processed == 0:
+                log.info(
+                    "sync tick idle slot=%s/%s",
+                    utc_minute(now) % interval if interval else 0,
+                    interval,
+                )
+                return
+            run = SyncRun()
+            db.add(run)
+            db.flush()
             run.users_processed = processed
             run.imported_count = imported
             run.skipped_count = skipped

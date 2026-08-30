@@ -12,9 +12,54 @@
     <div class="stat"><span>{{ t.admin_both }}</span> <strong>{{ stats.both }}</strong></div>
     <div class="stat"><span>{{ t.admin_sync_on }}</span> <strong>{{ stats.sync_on }}</strong></div>
     <div class="stat"><span>{{ t.admin_login_week }}</span> <strong>{{ stats.recent_login }}</strong></div>
+    <div class="stat"><span>{{ t.admin_queue_stat }}</span> <strong>{{ stats.queue_count }}</strong></div>
     <div class="stat"><span>{{ t.status_imported }}</span> <strong>{{ stats.imported }}</strong></div>
     <div class="stat"><span>{{ t.status_skipped }}</span> <strong>{{ stats.skipped }}</strong></div>
     <div class="stat"><span>{{ t.status_error }}</span> <strong>{{ stats.errors }}</strong></div>
+  </div>
+
+  <div class="card">
+    <h2>{{ t.admin_queue }}</h2>
+    <p class="note">{{ t.admin_queue_lead.format(hours=stats.lookback_hours) }}</p>
+    {% if stats.queue %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t.email_label }}</th>
+              <th>{{ t.col_when }}</th>
+              <th>{{ t.col_name }}</th>
+              <th>{{ t.col_sport }}</th>
+              <th>{{ t.col_status }}</th>
+              <th>{{ t.admin_next_try }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stats.queue %}
+              <tr>
+                <td>{{ row.email }}</td>
+                <td>{{ row.start or "—" }}</td>
+                <td>{{ row.name or "—" }}</td>
+                <td>{% if row.sport %}{{ t.get("sport_" ~ row.sport, row.sport) }}{% else %}—{% endif %}</td>
+                <td>
+                  {% if row.status == "error" %}
+                    <span class="pill off">{{ t.status_error }}</span>
+                  {% elif row.status == "pending" %}
+                    <span class="pill">{{ t.status_pending }}</span>
+                  {% else %}
+                    <span class="pill off">{{ row.status }}</span>
+                  {% endif %}
+                  {% if row.message %}<div class="status">{{ row.message }}</div>{% endif %}
+                </td>
+                <td>{{ utc_time(row.next_at) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="note">{{ t.admin_queue_empty }}</p>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -38,8 +83,8 @@
               <td>{% if row.intervals %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
               <td>{% if row.livelox %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
               <td>{% if row.sync_on %}{{ t.gps_yes }}{% else %}{{ t.gps_no }}{% endif %}</td>
-              <td>{% if row.last_sync %}{{ row.last_sync.strftime("%Y-%m-%d %H:%M") }} UTC{% else %}—{% endif %}</td>
-              <td>{% if row.last_login %}{{ row.last_login.strftime("%Y-%m-%d %H:%M") }} UTC{% else %}—{% endif %}</td>
+              <td>{{ utc_time(row.last_sync) }}</td>
+              <td>{{ utc_time(row.last_login) }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -49,6 +94,7 @@
 
   <div class="card">
     <h2>{{ t.admin_runs }}</h2>
+    <p class="note">{{ t.admin_runs_lead.format(minutes=stats.interval_minutes) }}</p>
     {% if stats.runs %}
       <div class="table-wrap">
         <table>
@@ -59,18 +105,16 @@
               <th>{{ t.status_imported }}</th>
               <th>{{ t.status_skipped }}</th>
               <th>{{ t.status_error }}</th>
-              <th>{{ t.admin_note }}</th>
             </tr>
           </thead>
           <tbody>
             {% for run in stats.runs %}
               <tr>
-                <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M") }} UTC</td>
+                <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td>{{ run.users_processed }}</td>
                 <td>{{ run.imported_count }}</td>
                 <td>{{ run.skipped_count }}</td>
                 <td>{{ run.error_count }}</td>
-                <td class="status">{{ run.note }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -97,7 +141,7 @@
           <tbody>
             {% for row in stats.error_rows %}
               <tr>
-                <td>{{ row.when.strftime("%Y-%m-%d %H:%M") }} UTC</td>
+                <td>{{ row.when.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td>{{ row.email }}</td>
                 <td>{{ row.title or "—" }}</td>
                 <td><div class="status">{{ row.message }}</div></td>

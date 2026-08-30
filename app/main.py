@@ -79,6 +79,18 @@ settings = get_settings()
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
 
+def utc_time_html(when: datetime | None) -> Markup:
+    if when is None:
+        return Markup("—")
+    naive = _utc_naive(when)
+    iso = naive.strftime("%Y-%m-%dT%H:%M:%SZ")
+    fallback = naive.strftime("%Y-%m-%d %H:%M UTC")
+    return Markup(f'<time class="js-local-time" datetime="{iso}">{escape(fallback)}</time>')
+
+
+templates.env.globals["utc_time"] = utc_time_html
+
+
 async def _scheduled_sync_loop(minutes: int) -> None:
     first_wait = min(120, max(minutes, 1) * 60)
     tick = 60

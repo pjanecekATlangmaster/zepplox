@@ -103,6 +103,7 @@
     {% endif %}
     <h2>{{ t.sports_title }}</h2>
     <p>{{ t.sports_lead }}</p>
+    <p class="note">{{ t.sports_note }}</p>
     <form method="post" action="/settings/sports">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="sports">

@@ -207,7 +207,10 @@ def livelox_http_message(exc: BaseException) -> str:
         if code in {401, 403}:
             return "Livelox odmítl přístup. Znovu propojte Livelox v nastavení."
         return f"Livelox HTTP {code}"
-    return str(exc)[:500]
+    text = str(exc)[:500]
+    if "InvalidRouteFileFormatException" in text or "global message number is not file_id" in text:
+        return "Livelox nepřijal soubor ze Zeppu (FIT nezačíná file_id). ZeppLox má posílat FIT z Intervals.icu."
+    return text
 
 
 def revoke_token(settings: Settings, token: str) -> None:

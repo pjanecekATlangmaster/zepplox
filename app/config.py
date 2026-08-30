@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     livelox_client_id: str = ""
     livelox_redirect_uri: str = ""
 
-    sync_lookback_hours: int = 2
+    sync_lookback_hours: int = 168
     sync_interval_minutes: int = 0
     sync_user_gap_seconds: float = 2.0
     log_retention_days: int = 7

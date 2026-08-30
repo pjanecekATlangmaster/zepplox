@@ -45,7 +45,7 @@ Configuration is **only** environment variables. Nothing in this repository is a
 | `LIVELOX_REDIRECT_URI` | Optional; defaults to `{APP_BASE_URL}/oauth/livelox/callback` |
 | `SYNC_INTERVAL_MINUTES` | Automatic poll interval. `0` = off. The Docker image defaults to **30**. Users are spread across that interval (one slot per minute) so Intervals/Livelox are not hit at once |
 | `SYNC_USER_GAP_SECONDS` | Pause between two users who share the same slot (default 2) |
-| `SYNC_LOOKBACK_HOURS` | How far back each poll looks |
+| `SYNC_LOOKBACK_HOURS` | How far back each automatic poll looks (default **168** = 7 days). The overview still lists 30 days |
 | `LOG_RETENTION_DAYS` | Sync log retention (default 7) |
 | `ADMIN_EMAILS` | Comma-separated e-mails that can open `/admin` (counts, sync runs, recent errors). Empty = no admin page |
 

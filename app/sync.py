@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.accounts import connection_for, livelox_tokens, read_connection_secret, upsert_connection, utcnow
 from app.config import Settings, get_settings
 from app.db import init_db, session_scope
-from app.intervals import activity_has_gps, download_fit, list_activities
+from app.intervals import activity_has_gps, canonical_sport, download_fit, list_activities
 from app.livelox import (
     dump_tokens,
     event_label,
@@ -163,7 +163,7 @@ def purge_old_logs(db: Session, settings: Settings) -> None:
 def _activity_fields(activity: dict) -> tuple[str, str, str, int]:
     activity_id = str(activity.get("id") or "")
     title = str(activity.get("name") or activity_id)
-    sport = str(activity.get("type") or "")
+    sport = canonical_sport(str(activity.get("type") or activity.get("sport") or ""))
     duration = int(activity.get("elapsed_time") or activity.get("moving_time") or 0)
     return activity_id, title, sport, duration
 
@@ -310,7 +310,7 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
         return 0, 0, 1
 
     newest = utcnow().date()
-    oldest = (utcnow() - timedelta(hours=settings.sync_lookback_hours + 24)).date()
+    oldest = (utcnow() - timedelta(hours=max(settings.sync_lookback_hours, 24))).date()
     try:
         activities = list_activities(api_key, oldest, newest)
     except Exception as exc:

@@ -7,6 +7,8 @@ ZeppLox is deployed from `main` as `ghcr.io/pjanecekatlangmaster/zepplox:latest`
 
 ## [Unreleased]
 
+- Livelox import uses Intervals.icu `/fit-file` instead of the original Zepp FIT. Zepp files start with `developer_data_id` (207); Livelox requires `file_id` (0) and was logging `InvalidRouteFileFormatException`.
+- Automatic poll lookback defaults to 7 days (`SYNC_LOOKBACK_HOURS=168`).
 - README labels which command generates `APP_ENCRYPTION_KEY` vs `SESSION_SECRET`.
 - README Synology SSH setup: download compose files, edit `.env`, then start. Prune leftover notes removed from the README.
 - Overview and Settings show when the next automatic sync will run (host interval, or off).

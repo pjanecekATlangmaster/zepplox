@@ -234,6 +234,14 @@ def import_one_activity(
         )
         return "error"
 
+    if (
+        skip_if_done
+        and previous is not None
+        and previous.status == "imported"
+        and not (previous.livelox_route_id or "")
+    ):
+        return "done"
+
     try:
         access = _livelox_access(db, settings, user.id)
     except Exception as exc:

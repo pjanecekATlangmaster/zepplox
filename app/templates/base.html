@@ -27,5 +27,23 @@
     · <a href="/privacy{% if lang == 'en' %}?lang=en{% endif %}">{{ t.privacy_link }}</a>
     · <a href="{{ github_url }}" rel="noopener" target="_blank">{{ t.github }}</a>
   </footer>
+  <script>
+    (function () {
+      var lang = document.documentElement.lang === "en" ? "en-GB" : "cs-CZ";
+      document.querySelectorAll("time.js-local-time[datetime]").forEach(function (el) {
+        var d = new Date(el.getAttribute("datetime"));
+        if (isNaN(d.getTime())) return;
+        el.textContent = d.toLocaleString(lang, {
+          day: "numeric",
+          month: lang === "en-GB" ? "short" : "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZoneName: "short"
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

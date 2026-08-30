@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -207,12 +208,20 @@ def _selected_sports(user: User) -> set[str]:
     return parse_sports(raw) & set(SPORT_CHOICES)
 
 
-def _format_sync_when(when: datetime, lang: str) -> str:
+def _utc_naive(when: datetime) -> datetime:
     if when.tzinfo is not None:
-        when = when.astimezone(timezone.utc).replace(tzinfo=None)
+        return when.astimezone(timezone.utc).replace(tzinfo=None)
+    return when
+
+
+def _format_sync_when(when: datetime, lang: str) -> Markup:
+    naive = _utc_naive(when)
+    iso = naive.strftime("%Y-%m-%dT%H:%M:%SZ")
     if lang == "cs":
-        return f"{when.day}. {when.month}. {when.year} {when.hour:02d}:{when.minute:02d} UTC"
-    return when.strftime("%d %b %Y %H:%M UTC")
+        fallback = f"{naive.day}. {naive.month}. {naive.year} {naive.hour:02d}:{naive.minute:02d} UTC"
+    else:
+        fallback = naive.strftime("%d %b %Y %H:%M UTC")
+    return Markup(f'<time class="js-local-time" datetime="{iso}">{escape(fallback)}</time>')
 
 
 def _sync_schedule_message(lang: str, user_enabled: bool, user_id: int = 0) -> str:
@@ -226,8 +235,8 @@ def _sync_schedule_message(lang: str, user_enabled: bool, user_id: int = 0) -> s
     when = next_user_sync_at(user_id, minutes) if user_id else state["next_at"]
     when_label = _format_sync_when(when, lang) if isinstance(when, datetime) else t["sync_when_unknown"]
     if not user_enabled:
-        return t["sync_next_skipped"].format(when=when_label, minutes=minutes)
-    return t["sync_next"].format(when=when_label, minutes=minutes)
+        return Markup(t["sync_next_skipped"]).format(when=when_label, minutes=minutes)
+    return Markup(t["sync_next"]).format(when=when_label, minutes=minutes)
 
 
 def _attach_import_status(db: Session, user_id: int, activities: list[dict]) -> None:

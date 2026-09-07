@@ -343,7 +343,8 @@ def sync_user(db: Session, settings: Settings, user: User) -> tuple[int, int, in
         elif result == "skipped":
             skipped += 1
 
-    prefs.last_sync_at = utcnow()
+    if imported or skipped or errors:
+        prefs.last_sync_at = utcnow()
     return imported, skipped, errors
 
 
@@ -433,6 +434,14 @@ def run_sync(*, due_only: bool = True) -> None:
             if due_only and processed == 0:
                 log.info(
                     "sync tick idle slot=%s/%s",
+                    utc_minute(now) % interval if interval else 0,
+                    interval,
+                )
+                return
+            if imported == 0 and skipped == 0 and errors == 0:
+                log.info(
+                    "sync tick no work users=%s slot=%s/%s",
+                    processed,
                     utc_minute(now) % interval if interval else 0,
                     interval,
                 )

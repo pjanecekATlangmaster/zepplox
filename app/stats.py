@@ -27,6 +27,11 @@ def aggregate_sync_runs(runs: list[SyncRun], interval_minutes: int, *, limit: in
     buckets: dict[int, dict[str, object]] = {}
     order: list[int] = []
     for run in runs:
+        imported = int(run.imported_count or 0)
+        skipped = int(run.skipped_count or 0)
+        errors = int(run.error_count or 0)
+        if imported == 0 and skipped == 0 and errors == 0:
+            continue
         ts = run.started_at
         if ts is None:
             continue
@@ -46,9 +51,9 @@ def aggregate_sync_runs(runs: list[SyncRun], interval_minutes: int, *, limit: in
             order.append(window)
         bucket = buckets[window]
         bucket["users_processed"] = int(bucket["users_processed"]) + int(run.users_processed or 0)
-        bucket["imported_count"] = int(bucket["imported_count"]) + int(run.imported_count or 0)
-        bucket["skipped_count"] = int(bucket["skipped_count"]) + int(run.skipped_count or 0)
-        bucket["error_count"] = int(bucket["error_count"]) + int(run.error_count or 0)
+        bucket["imported_count"] = int(bucket["imported_count"]) + imported
+        bucket["skipped_count"] = int(bucket["skipped_count"]) + skipped
+        bucket["error_count"] = int(bucket["error_count"]) + errors
     return [buckets[key] for key in order]
 
 
@@ -140,6 +145,11 @@ def collect_admin_stats(db: Session, *, log_days: int = 7) -> dict[str, object]:
     since = utcnow() - timedelta(days=log_days)
     week_login = utcnow() - timedelta(days=7)
     interval_minutes = max(int(get_settings().sync_interval_minutes), 0)
+    last_work = dict(
+        db.execute(
+            select(ImportLog.user_id, func.max(ImportLog.created_at)).group_by(ImportLog.user_id)
+        ).all()
+    )
     intervals = livelox = both = sync_on = recent_login = 0
     rows: list[dict[str, object]] = []
     for user in users:
@@ -163,7 +173,7 @@ def collect_admin_stats(db: Session, *, log_days: int = 7) -> dict[str, object]:
                 "intervals": has_intervals,
                 "livelox": has_livelox,
                 "sync_on": enabled,
-                "last_sync": user.settings.last_sync_at if user.settings else None,
+                "last_sync": last_work.get(user.id),
                 "last_login": user.last_login_at,
                 "created": user.created_at,
             }

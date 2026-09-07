@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.accounts import connection_for, read_connection_secret, utcnow
@@ -13,6 +13,7 @@ from app.sync import auto_skip_reason, latest_imports, next_user_sync_at
 
 QUEUE_LIMIT = 40
 RUN_WINDOWS = 12
+RUN_DETAIL_LIMIT = 30
 
 
 def _naive_utc(when: datetime) -> datetime:
@@ -47,6 +48,10 @@ def aggregate_sync_runs(runs: list[SyncRun], interval_minutes: int, *, limit: in
                 "imported_count": 0,
                 "skipped_count": 0,
                 "error_count": 0,
+                "imported_items": [],
+                "skipped_items": [],
+                "error_items": [],
+                "user_items": [],
             }
             order.append(window)
         bucket = buckets[window]
@@ -55,6 +60,65 @@ def aggregate_sync_runs(runs: list[SyncRun], interval_minutes: int, *, limit: in
         bucket["skipped_count"] = int(bucket["skipped_count"]) + skipped
         bucket["error_count"] = int(bucket["error_count"]) + errors
     return [buckets[key] for key in order]
+
+
+def _log_item(row: ImportLog, emails: dict[int, str]) -> dict[str, str]:
+    return {
+        "email": emails.get(row.user_id, ""),
+        "title": (row.title or "").strip(),
+        "message": (row.message or "").strip(),
+    }
+
+
+def attach_run_details(
+    runs: list[dict[str, object]],
+    logs: list[ImportLog],
+    emails: dict[int, str],
+    interval_minutes: int,
+) -> None:
+    if not runs:
+        return
+    interval = max(int(interval_minutes) or 30, 1)
+    step = interval * 60
+    by_window: dict[int, dict[str, object]] = {}
+    for run in runs:
+        started = run.get("started_at")
+        if not isinstance(started, datetime):
+            continue
+        epoch = int(_naive_utc(started).replace(tzinfo=timezone.utc).timestamp())
+        run["imported_items"] = []
+        run["skipped_items"] = []
+        run["error_items"] = []
+        run["user_items"] = []
+        run["_user_seen"] = set()
+        by_window[epoch] = run
+    for row in logs:
+        if row.created_at is None:
+            continue
+        epoch = int(_naive_utc(row.created_at).replace(tzinfo=timezone.utc).timestamp())
+        window = epoch - (epoch % step)
+        run = by_window.get(window)
+        if run is None:
+            continue
+        item = _log_item(row, emails)
+        if row.status == "imported":
+            items = run["imported_items"]
+        elif row.status == "skipped":
+            items = run["skipped_items"]
+        elif row.status == "error":
+            items = run["error_items"]
+        else:
+            continue
+        if isinstance(items, list) and len(items) < RUN_DETAIL_LIMIT:
+            items.append(item)
+        seen = run["_user_seen"]
+        email = item["email"]
+        users = run["user_items"]
+        if email and isinstance(seen, set) and email not in seen and isinstance(users, list):
+            seen.add(email)
+            users.append({"email": email, "title": "", "message": ""})
+    for run in runs:
+        run.pop("_user_seen", None)
 
 
 def _collect_queue(db: Session, users: list[User], *, interval_minutes: int) -> list[dict[str, object]]:
@@ -189,7 +253,11 @@ def collect_admin_stats(db: Session, *, log_days: int = 7) -> dict[str, object]:
     errors = list(
         db.scalars(
             select(ImportLog)
-            .where(ImportLog.status == "error", ImportLog.created_at >= since)
+            .where(
+                ImportLog.status == "error",
+                ImportLog.created_at >= since,
+                ImportLog.acknowledged_at.is_(None),
+            )
             .order_by(ImportLog.id.desc())
             .limit(15)
         ).all()
@@ -197,6 +265,15 @@ def collect_admin_stats(db: Session, *, log_days: int = 7) -> dict[str, object]:
     raw_runs = list(db.scalars(select(SyncRun).order_by(SyncRun.id.desc()).limit(500)).all())
     error_emails = {user.id: user.email for user in users}
     queue = _collect_queue(db, users, interval_minutes=interval_minutes)
+    runs = aggregate_sync_runs(raw_runs, interval_minutes or 30)
+    if runs:
+        oldest = min(row["started_at"] for row in runs if isinstance(row.get("started_at"), datetime))
+        window_logs = list(
+            db.scalars(
+                select(ImportLog).where(ImportLog.created_at >= oldest).order_by(ImportLog.id.asc())
+            ).all()
+        )
+        attach_run_details(runs, window_logs, error_emails, interval_minutes or 30)
     return {
         "user_count": len(users),
         "intervals": intervals,
@@ -222,5 +299,13 @@ def collect_admin_stats(db: Session, *, log_days: int = 7) -> dict[str, object]:
             }
             for row in errors
         ],
-        "runs": aggregate_sync_runs(raw_runs, interval_minutes or 30),
+        "runs": runs,
     }
+
+
+def acknowledge_admin_errors(db: Session) -> None:
+    db.execute(
+        update(ImportLog)
+        .where(ImportLog.status == "error", ImportLog.acknowledged_at.is_(None))
+        .values(acknowledged_at=utcnow())
+    )

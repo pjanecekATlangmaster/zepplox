@@ -67,6 +67,11 @@ p.lead { color: var(--muted); margin: 0 0 24px; }
   gap: 16px;
   flex-wrap: wrap;
 }
+.toolbar h2 { margin: 0; }
+.toolbar .note { margin: 6px 0 0; }
+.toolbar form { margin: 0; }
+.toolbar button { margin-top: 0; }
+.card > .toolbar { margin-bottom: 12px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .pill {
   display: inline-block;
@@ -121,9 +126,39 @@ label.check input { margin-top: 3px; }
 .error { color: var(--danger); margin: 12px 0; }
 .notice { color: var(--ok); margin: 0 0 16px; }
 .table-wrap { overflow-x: auto; }
+.table-wrap.tips { overflow: visible; }
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
+.count-tip {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.count-pop {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 16rem;
+  max-width: min(26rem, 70vw);
+  max-height: 16rem;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--ink);
+  color: var(--card);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  z-index: 40;
+  box-shadow: 0 6px 18px rgba(28, 36, 28, 0.22);
+}
+.count-pop div + div { margin-top: 6px; }
+.count-tip:hover .count-pop,
+.count-tip:focus .count-pop,
+.count-tip:focus-within .count-pop { display: block; }
 .sports { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 16px; }
 .sports label { margin: 0; }
 th.check, td.check { width: 3.2rem; text-align: center; }

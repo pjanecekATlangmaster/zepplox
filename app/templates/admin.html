@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ t.admin }} · {{ app_name }}{% endblock %}
 {% block content %}
+  {% macro count_tip(n, items, with_reason=false) %}
+    {% if n and items %}
+      <span class="count-tip" tabindex="0">{{ n }}<span class="count-pop" role="tooltip">{% for item in items %}<div>{{ item.email }}{% if item.title %} — {{ item.title }}{% endif %}{% if with_reason and item.message %}: {{ item.message }}{% endif %}</div>{% endfor %}{% if n > (items|length) %}<div>{{ t.admin_tip_more.format(n=n - (items|length)) }}</div>{% endif %}</span></span>
+    {% else %}
+      {{ n }}
+    {% endif %}
+  {% endmacro %}
   <p><a href="/">{{ t.back_overview }}</a></p>
   <h1>{{ t.admin }}</h1>
   <p class="lead">{{ t.admin_lead.format(days=stats.log_days) }}</p>
@@ -96,7 +103,7 @@
     <h2>{{ t.admin_runs }}</h2>
     <p class="note">{{ t.admin_runs_lead.format(minutes=stats.interval_minutes) }}</p>
     {% if stats.runs %}
-      <div class="table-wrap">
+      <div class="table-wrap tips">
         <table>
           <thead>
             <tr>
@@ -111,10 +118,10 @@
             {% for run in stats.runs %}
               <tr>
                 <td>{{ run.started_at.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>{{ run.users_processed }}</td>
-                <td>{{ run.imported_count }}</td>
-                <td>{{ run.skipped_count }}</td>
-                <td>{{ run.error_count }}</td>
+                <td>{{ count_tip(run.users_processed, run.user_items) }}</td>
+                <td>{{ count_tip(run.imported_count, run.imported_items) }}</td>
+                <td>{{ count_tip(run.skipped_count, run.skipped_items, true) }}</td>
+                <td>{{ count_tip(run.error_count, run.error_items, true) }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -126,7 +133,20 @@
   </div>
 
   <div class="card">
-    <h2>{{ t.admin_recent_errors }}</h2>
+    <div class="toolbar">
+      <div>
+        <h2>{{ t.admin_recent_errors }}</h2>
+        {% if stats.error_rows %}
+          <p class="note">{{ t.admin_ack_errors_lead }}</p>
+        {% endif %}
+      </div>
+      {% if stats.error_rows %}
+        <form method="post" action="/admin/errors/ack">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="ghost" type="submit">{{ t.admin_ack_errors }}</button>
+        </form>
+      {% endif %}
+    </div>
     {% if stats.error_rows %}
       <div class="table-wrap">
         <table>

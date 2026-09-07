@@ -45,6 +45,9 @@ def init_db() -> None:
     if "livelox_route_id" not in log_columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE import_logs ADD COLUMN livelox_route_id VARCHAR(48) NOT NULL DEFAULT ''"))
+    if "acknowledged_at" not in log_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE import_logs ADD COLUMN acknowledged_at DATETIME NULL"))
 
 
 @contextmanager

@@ -74,6 +74,7 @@ class ImportLog(Base):
     message: Mapped[str] = mapped_column(String(500), default="")
     livelox_event: Mapped[str] = mapped_column(String(300), default="")
     livelox_route_id: Mapped[str] = mapped_column(String(48), default="")
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class SyncRun(Base):

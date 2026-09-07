@@ -55,7 +55,7 @@ from app.livelox import (
 )
 from app.mail import send_otp_email
 from app.models import User
-from app.stats import collect_admin_stats
+from app.stats import acknowledge_admin_errors, collect_admin_stats
 from app.sync import (
     MANUAL_LIMIT,
     SPORT_CHOICES,
@@ -491,6 +491,18 @@ def admin_page(
 ):
     stats = collect_admin_stats(db, log_days=settings.log_retention_days)
     return _html(request, "admin.html", user=user, stats=stats)
+
+
+@app.post("/admin/errors/ack")
+def admin_ack_errors(
+    request: Request,
+    csrf: str = Form(...),
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf)
+    acknowledge_admin_errors(db)
+    return RedirectResponse("/admin", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)
